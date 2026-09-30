@@ -12,6 +12,7 @@ from pypdf import PdfReader
 from ticketdepot import api as api_module
 from ticketdepot.delays import LegDelay
 from ticketdepot.store import Store
+from ticketdepot.ticket_pdf import parse_ticket_pdf
 
 TESTDATEN = Path(__file__).parent.parent / "testdaten"
 ICE_619 = TESTDATEN / "Ticket_900000000808_14.08.2026__TEST_08_hin_und_rueck.pdf"
@@ -177,7 +178,9 @@ def test_data_from_the_old_app_name_is_taken_over(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path / "AppData"))
     old = store.data_dir().parent / "Bahntickets"
     (old / "pdfs").mkdir(parents=True)
-    Store(old / "bahntickets.sqlite").save_ticket(__import__("ticketdepot.ticket_pdf", fromlist=["x"]).parse_ticket_pdf(ICE_2466), str(old / "pdfs" / "900000000909.pdf"))
+    legacy_store = Store(old / "bahntickets.sqlite")
+    legacy_store.save_ticket(parse_ticket_pdf(ICE_2466), str(old / "pdfs" / "900000000909.pdf"))
+    legacy_store._db.close()  # Windows cannot rename a folder with an open file in it
     (old / "pdfs" / "900000000909.pdf").write_bytes(ICE_2466.read_bytes())
     store.data_dir().rmdir()  # simulate a fresh install of the renamed app
 
