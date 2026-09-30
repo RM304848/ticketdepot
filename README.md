@@ -16,7 +16,7 @@ Die App ist nicht signiert, deshalb warnt das System beim ersten Start:
 - **Windows:** „Der Computer wurde durch Windows geschützt“ → **Weitere Informationen** → **Trotzdem ausführen**.
 - **macOS:** Start wird blockiert → **Systemeinstellungen → Datenschutz & Sicherheit** → unten **Trotzdem öffnen**.
 
-Beenden über das Symbol in der Taskleiste bzw. Menüleiste → **Beenden**. Ein zweiter Start öffnet nur den Browser zur laufenden App. Daten: `%APPDATA%\Ticketdepot` bzw. `~/Library/Application Support/Ticketdepot` – sie bleiben bei Updates erhalten.
+Beenden über **Beenden** unten auf der Seite oder das Symbol in der Taskleiste bzw. Menüleiste. Die App hat kein Dock-Symbol – vor dem Löschen oder Aktualisieren so beenden. Ein zweiter Start öffnet nur den Browser zur laufenden App. Daten: `%APPDATA%\Ticketdepot` bzw. `~/Library/Application Support/Ticketdepot` – sie bleiben bei Updates erhalten.
 
 ## Was die App pro Fahrt entscheidet
 

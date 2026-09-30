@@ -77,10 +77,11 @@ def _run_with_tray(server) -> None:
 
     threading.Thread(target=server.serve_forever, daemon=True).start()
 
-    def quit_app(icon, _item):
+    def quit_app(*_):
         icon.stop()
         server.shutdown()
 
+    server.on_quit = quit_app  # "Beenden" in the page does the same as in the tray menu
     icon = pystray.Icon(
         "Ticketdepot",
         tray_image(64),

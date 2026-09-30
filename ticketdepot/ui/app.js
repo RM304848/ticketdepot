@@ -578,6 +578,23 @@ $("#about-open").addEventListener("click", () => {
   $("#about-dialog").showModal();
 });
 
+// --- quit ----------------------------------------------------------------------------
+
+$("#quit").addEventListener("click", async () => {
+  if (!confirm("Ticketdepot beenden? Deine Daten bleiben gespeichert.")) return;
+  try {
+    await call("quit");
+  } catch {
+    /* the server may already be gone */
+  }
+  document.body.replaceChildren(
+    h("main", { class: "ended" },
+      h("h1", {}, "Ticketdepot ist beendet."),
+      h("p", { class: "muted" }, "Du kannst dieses Fenster schließen. Zum Weitermachen die App wieder starten."),
+    ),
+  );
+});
+
 // --- delays ----------------------------------------------------------------------------
 
 async function checkOne(id, el) {

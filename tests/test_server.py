@@ -69,3 +69,24 @@ def test_unknown_downloads_404(server):
     assert request(server, "GET", "/proof/999.pdf")[0] == 404
     assert request(server, "GET", "/ticket/1.pdf")[0] == 404
     assert request(server, "GET", "/../ticketdepot/api.py")[0] == 404
+
+
+def test_quit_needs_the_token_and_stops_the_server(server):
+    quit_called = threading.Event()
+    server.on_quit = quit_called.set
+    assert request(server, "POST", "/api/quit", [])[0] == 403
+    assert not quit_called.wait(0.6)
+    status, _, body = request(server, "POST", "/api/quit", [], {"X-Ticketdepot-Token": server.token})
+    assert status == 200 and json.loads(body) is True
+    assert quit_called.wait(2)
+
+
+def test_quit_really_ends_serve_forever(tmp_path, monkeypatch):
+    monkeypatch.setenv("TICKETDEPOT_DATA", str(tmp_path / "data"))
+    srv = Server(Api(), 0)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    assert request(srv, "POST", "/api/quit", [], {"X-Ticketdepot-Token": srv.token})[0] == 200
+    t.join(3)
+    assert not t.is_alive()
+    srv.server_close()

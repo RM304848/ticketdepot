@@ -233,7 +233,12 @@ input:focus, select:focus { outline: 2px solid var(--teal-300); outline-offset: 
 
 /* --- footer, drop zone, toasts, dialogs --------------------------------------------------- */
 
-.foot { max-width: 980px; margin: 0 auto; padding: 0 24px 32px; color: var(--muted); font-size: 12px; }
+.foot {
+  display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between;
+  max-width: 980px; margin: 0 auto; padding: 0 24px 32px; color: var(--muted); font-size: 12px;
+}
+.ended { padding-top: 20vh; text-align: center; }
+.ended h1 { font-size: 22px; margin-bottom: 8px; }
 
 .drop {
   position: fixed; inset: 12px; z-index: 20;

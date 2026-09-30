@@ -13,6 +13,7 @@ import mimetypes
 import re
 import secrets
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote
@@ -32,7 +33,12 @@ class Server(ThreadingHTTPServer):
     def __init__(self, api: Api, port: int):
         self.api = api
         self.token = secrets.token_urlsafe(24)
+        self.on_quit = self.shutdown  # the launcher replaces this to also stop the tray icon
         super().__init__(("127.0.0.1", port), _Handler)
+
+    def quit_soon(self) -> None:
+        """Quit after the current response is out (shutdown() must not run on a request thread)."""
+        threading.Timer(0.3, self.on_quit).start()
 
     @property
     def port(self) -> int:
@@ -80,6 +86,9 @@ class _Handler(BaseHTTPRequestHandler):
         ):
             return self.send_error(403)
         method = self.path.removeprefix("/api/")
+        if method == "quit":  # "Beenden" in the page footer
+            self._send(200, b"true", "application/json")
+            return self.server.quit_soon()
         api = self.server.api
         if method.startswith("_") or method in ("ticket_pdf", "proof", "calendar") or not callable(getattr(api, method, None)):
             return self.send_error(404)

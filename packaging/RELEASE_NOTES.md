@@ -3,7 +3,7 @@
 - **Windows:** `Ticketdepot-VERSION-windows.exe` (eine Datei). Falls Windows oder der Virenscanner die .exe blockiert: `Ticketdepot-VERSION-windows.zip` entpacken und `Ticketdepot.exe` im Ordner starten.
 - **macOS (Apple Silicon):** `Ticketdepot-VERSION-macos-arm64.dmg` öffnen und Ticketdepot in „Programme“ ziehen.
 
-Die App öffnet sich im Browser. Beenden über das Symbol in der Taskleiste (Windows) bzw. Menüleiste (macOS) → **Beenden**. Deine Daten bleiben bei Updates erhalten (`%APPDATA%\Ticketdepot` bzw. `~/Library/Application Support/Ticketdepot`).
+Die App öffnet sich im Browser. **Beenden:** unten auf der Seite **Beenden** klicken – oder über das Symbol in der Taskleiste (Windows) bzw. Menüleiste (macOS). Die App hat kein Dock-Symbol; vor dem Löschen oder Aktualisieren bitte so beenden, sonst lässt sie sich nicht löschen. Deine Daten bleiben bei Updates erhalten (`%APPDATA%\Ticketdepot` bzw. `~/Library/Application Support/Ticketdepot`).
 
 ## Erster Start
 
