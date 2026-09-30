@@ -9,6 +9,8 @@ The released binaries bundle the following components.
 | DuckDB (incl. the `httpfs` extension) | MIT | https://github.com/duckdb/duckdb |
 | pypdf | BSD-3-Clause | https://github.com/py-pdf/pypdf |
 | pystray | LGPL-3.0 | https://github.com/moses-palmer/pystray |
+| truststore | MIT | https://github.com/sethmlarson/truststore |
+| tzdata | Apache-2.0 | https://github.com/python/tzdata |
 | Pillow | MIT-CMU (HPND) | https://github.com/python-pillow/Pillow |
 | PyObjC (macOS, via pystray) | MIT | https://github.com/ronaldoussoren/pyobjc |
 | six (via pystray) | MIT | https://github.com/benjaminp/six |

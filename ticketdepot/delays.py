@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import ssl
 import sys
 import urllib.error
 import urllib.request
@@ -260,12 +261,25 @@ def _raw_day(d: date) -> list[dict]:
 
 def _tree(path: str) -> list[dict]:
     try:
-        with urllib.request.urlopen(HF_TREE + path, timeout=30) as resp:
+        with urllib.request.urlopen(HF_TREE + path, timeout=30, context=_tls()) as resp:
             return json.load(resp)
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return []
         raise
+
+
+@cache
+def _tls() -> ssl.SSLContext:
+    """Verify HTTPS against the operating system's trusted certificates (macOS Keychain,
+    Windows certificate store). The packaged app's own OpenSSL only knows the CA paths of
+    the build machine, so on other computers every request failed verification."""
+    try:
+        import truststore
+
+        return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except Exception:  # noqa: BLE001 - fall back to Python's defaults
+        return ssl.create_default_context()
 
 
 @cache

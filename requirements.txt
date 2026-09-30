@@ -3,5 +3,6 @@ pymupdf>=1.24
 pypdf>=5.0
 pystray>=0.19
 pillow>=10
+truststore>=0.9  # HTTPS verification against the OS certificate store (packaged app)
 tzdata  # Windows has no system time-zone database; zoneinfo needs it for Europe/Berlin
 pytest>=8

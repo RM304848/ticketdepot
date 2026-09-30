@@ -24,7 +24,7 @@ a = Analysis(
         (str(ROOT / "LICENSE"), "."),
         (str(ROOT / "THIRD_PARTY_NOTICES.md"), "."),
     ],
-    hiddenimports=["pystray._darwin" if MAC else "pystray._win32"],
+    hiddenimports=["pystray._darwin" if MAC else "pystray._win32", "truststore"],
     excludes=["tkinter", "webview", "pytest"],
 )
 pyz = PYZ(a.pure)
