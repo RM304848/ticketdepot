@@ -2,7 +2,7 @@
 Google Calendar link.
 
 Google ignores alarms in imported files, so the event itself is the reminder: an
-all-day event on the day to act (the "Frist bald" date), with the real deadline in
+all-day event on the day to act (the "Bald fällig" date), with the real deadline in
 the title. Apple and Outlook additionally get an alarm at 09:00 that day.
 """
 

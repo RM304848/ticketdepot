@@ -105,7 +105,7 @@ All thresholds, percentages, texts and source URLs live here with `LAST_VERIFIED
 5. **Reuse / Vorrat:** expected delay ≥ 20 min (or cancelled/missed) lifts train binding; usable for a later connection up to **one year after the travel date** (last valid day = travel date + 1 year). Not for heavily discounted tickets (Deutschland-Ticket, Länder-Tickets). Source verified: https://www.bahn.de/faq/zugbindung-aufgehoben-bedeutung ("bis zu einem Jahr nach ursprünglichem Reisedatum"). Update the stale comment and README that say bahn.de names no limit.
 6. **Refund and reuse are mutually exclusive** → choice in 2.2.
 7. **Claim deadline:** the app shows 3 months after the travel date (`CLAIM_DEADLINE_MONTHS`), for both compensation and refund, as an early reminder. bahn.de states 12 months (`DB_CLAIM_LIMIT_MONTHS`, shown in Details and in the calendar description).
-8. **Lead times** (constants): `CLAIM_LEAD_DAYS = 21`, `VORRAT_LEAD_DAYS = 30`. An item is "Frist bald" from `deadline − lead` on; calendar events use the same date (section 6).
+8. **Lead times** (constants): `CLAIM_LEAD_DAYS = 21`, `VORRAT_LEAD_DAYS = 30`. An item is "Bald fällig" from `deadline − lead` on; calendar events use the same date (section 6).
 9. **Delay bands** (for filters), lower bound inclusive, upper exclusive: `20–59`, `60–119`, `≥ 120`. Each band carries a short explanation for both answers, e.g. `60–119 min`: `Gefahren → 25 % · Nicht gefahren → Geld zurück oder später fahren`.
 10. Every rule has `source_url` (section 7).
 
@@ -128,9 +128,9 @@ No QR codes, LAN serving, Web Share or cloud transfer.
 
 ## 5. Dashboard, tabs, filters
 
-**Tiles (three):** `Offen` (€ of claims the user can file now: compensation ≥ 4 € after `ja`, refund after `erstattung`, not yet `beantragt`), `Brauchen deine Angabe` (count), `Frist bald` (claims and Vorrat items past their lead date).
+**Tiles (three):** `Erstattung offen` (€ of claims the user can file now: compensation ≥ 4 € after `ja`, refund after `erstattung`, not yet `beantragt`), `Offene Fragen` (count), `Bald fällig` (claims and Vorrat items past their lead date).
 
-**Tabs:** `Zu tun`, `Vorrat`, `Beantragt`, `Anstehend`, `Alle`. `Vorrat` sorted by expiry, soonest first.
+**Tabs:** `Offen`, `Vorrat`, `Beantragt`, `Anstehend`, `Alle`. `Vorrat` sorted by expiry, soonest first.
 
 **Route lookup in `Vorrat`:** always visible in the Vorrat tab when it has tickets (not behind the `Filter` toggle); fields `Von` / `Nach` with autocomplete from stations of imported tickets; matching is case/umlaut-insensitive on the station name prefix (`Düsseldorf` matches `Düsseldorf Hbf`, `Frankfurt` matches `Frankfurt(Main)Hbf`). Compare against the journey's origin and final destination. Direction matters.
 
@@ -138,7 +138,7 @@ No QR codes, LAN serving, Web Share or cloud transfer.
 
 **Delay:** band chips `20–59 min`, `60–119 min`, `≥ 120 min` (tooltip = band explanation from rules), plus a separate chip `Ausfall / Anschluss verpasst`. Trips < 20 min are in no band.
 
-**Deadline:** chip `Frist bald`.
+**Deadline:** chip `Bald fällig`.
 
 **Search:** one field over train number, station, order number and note.
 

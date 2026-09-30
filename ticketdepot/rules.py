@@ -36,8 +36,8 @@ MIN_PAYOUT_EUR = 4.0
 REUSE_MONTHS = 12  # "bis zu einem Jahr nach ursprünglichem Reisedatum"
 CLAIM_DEADLINE_MONTHS = 3  # the app's own, early deadline for claims
 DB_CLAIM_LIMIT_MONTHS = 12  # what bahn.de states for passenger-rights claims
-CLAIM_LEAD_DAYS = 21  # a claim counts as "Frist bald" this long before its deadline
-VORRAT_LEAD_DAYS = 30  # a Vorrat ticket counts as "Frist bald" this long before it expires
+CLAIM_LEAD_DAYS = 21  # a claim counts as "Bald fällig" this long before its deadline
+VORRAT_LEAD_DAYS = 30  # a Vorrat ticket counts as "Bald fällig" this long before it expires
 MIN_TRANSFER = timedelta(minutes=2)
 
 FAQ = "https://www.bahn.de/faq/"
@@ -216,7 +216,7 @@ class Verdict:
     force_majeure: bool = False
     due: str | None = None  # the date that matters now (claim deadline or Vorrat expiry)
     due_kind: str | None = None  # claim | vorrat
-    action_date: str | None = None  # from here on the item is "Frist bald"
+    action_date: str | None = None  # from here on the item is "Bald fällig"
     due_soon: bool = False
     band: str | None = None
     outcomes: list[str] = field(default_factory=list)

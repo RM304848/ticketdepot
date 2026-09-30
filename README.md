@@ -30,7 +30,7 @@ Beenden über das Symbol in der Taskleiste bzw. Menüleiste → **Beenden**. Ein
 
 - Hin- und Rückfahrt zu einem Preis: Basis ist der halbe Preis. Entschädigungen unter 4 € zahlt die DB nicht aus.
 - Fristen zählen ab Reisedatum (Abfahrt). Die App setzt für Anträge **3 Monate** (bahn.de nennt 12 Monate); Vorrat-Tickets gelten 1 Jahr.
-- „Frist bald“: Anträge 21 Tage vor der Frist, Vorrat-Tickets 30 Tage vor Ablauf. Am selben Tag liegt der Kalendereintrag.
+- „Bald fällig“: Anträge 21 Tage vor der Frist, Vorrat-Tickets 30 Tage vor Ablauf. Am selben Tag liegt der Kalendereintrag.
 - Grundlage ist die *erwartete* Verspätung; die App sieht die *tatsächliche* als Näherung.
 - Alle Regeln, Schwellen, Texte und die offiziellen bahn.de-Seiten stehen in [`ticketdepot/rules.py`](ticketdepot/rules.py) (`LAST_VERIFIED`). `python tools/check_links.py` prüft die Links.
 

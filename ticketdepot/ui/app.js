@@ -173,7 +173,7 @@ function render() {
       h("p", {}, "Importiere ein DB-Ticket-PDF über „PDF importieren“, per Drag & Drop oder „Aus Downloads“."),
     );
   } else {
-    const msg = active ? "Keine Treffer für diese Filter." : { todo: "Hier ist gerade nichts zu tun.", vorrat: "Kein Ticket im Vorrat.", claimed: "Keine offenen Anträge.", future: "Keine anstehenden Reisen.", all: "" }[view.tab];
+    const msg = active ? "Keine Treffer für diese Filter." : { todo: "Nichts offen – alles erledigt.", vorrat: "Kein Ticket im Vorrat.", claimed: "Keine offenen Anträge.", future: "Keine anstehenden Reisen.", all: "" }[view.tab];
     empty.replaceChildren(h("p", {}, msg));
   }
 }
@@ -183,10 +183,10 @@ function renderTiles() {
   const tile = (label, value, note, cls, onclick) =>
     h("button", { class: `tile ${cls}`, type: "button", onclick }, h("span", { class: "label" }, label), h("span", { class: "value" }, value), h("span", { class: "note" }, note));
   $("#tiles").replaceChildren(
-    tile("Offen", eur(s.open_eur), s.open_count ? `${s.open_count} Antrag${s.open_count === 1 ? "" : "e"} bereit` : "nichts zu beantragen", s.open_count ? "money" : "", () => setTab("todo")),
-    tile("Brauchen deine Angabe", s.needs_input, "gefahren? Ankunft?", s.needs_input ? "attention" : "", () => setTab("todo")),
+    tile("Erstattung offen", eur(s.open_eur), s.open_count ? `${s.open_count} Antrag${s.open_count === 1 ? "" : "e"} bereit` : "nichts zu beantragen", s.open_count ? "money" : "", () => setTab("todo")),
+    tile("Offene Fragen", s.needs_input, "Gefahren? Ankunft? Geld oder später?", s.needs_input ? "attention" : "", () => setTab("todo")),
     h("div", { class: "tile-wrap" },
-      tile("Frist bald", s.due_soon, "Anträge und Vorrat-Tickets", s.due_soon ? "attention" : "", () => {
+      tile("Bald fällig", s.due_soon, "Anträge und Vorrat", s.due_soon ? "attention" : "", () => {
         Object.assign(view, { tab: "all", frist: true });
         state.filtersOpen = true;
         render();
@@ -214,7 +214,7 @@ function renderChips(inTab) {
         view.band = view.band === b.key ? "" : b.key;
         render();
       }, b.explain)),
-    chip("Frist bald", view.frist, inTab.filter((j) => j.verdict.due_soon).length, () => {
+    chip("Bald fällig", view.frist, inTab.filter((j) => j.verdict.due_soon).length, () => {
       view.frist = !view.frist;
       render();
     }),
@@ -249,7 +249,7 @@ function card(j) {
 function dueLine(v) {
   if (!v.due) return h("span", { class: "due" });
   const text = v.due_kind === "vorrat" ? `Gültig bis ${de(v.due)}` : `Frist: ${de(v.due)}`;
-  return h("span", { class: `due ${v.due_soon ? "soon" : ""}` }, text, v.due_soon ? " · bald" : "");
+  return h("span", { class: `due ${v.due_soon ? "soon" : ""}` }, text, v.due_soon ? " · bald fällig" : "");
 }
 
 function body(j) {
