@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/fixtures/private/
+*.sqlite
+build/
+dist/
+testdaten/appdata/
+.claude/launch.json
+.DS_Store

@@ -1,0 +1,106 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:  # manual run: builds and uploads the .exe/.zip/.dmg as artifacts, no release
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest  # Apple Silicon (arm64)
+            platform: macos-arm64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt "pyinstaller>=6.10"
+
+      - name: Version matches tag
+        run: |
+          version=$(python -c "import ticketdepot; print(ticketdepot.__version__)")
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            test "v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME != __version__ $version"; exit 1; }
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Tests
+        run: python -m pytest -q
+
+      - name: Build inputs (icons, bundled DuckDB extension)
+        run: python tools/prepare_build.py
+
+      - name: Build (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $env:BT_ONEFILE = "1"
+          pyinstaller --noconfirm packaging/ticketdepot.spec
+          Move-Item dist/Ticketdepot.exe "dist/Ticketdepot-$env:VERSION-windows.exe"
+          $env:BT_ONEFILE = "0"
+          pyinstaller --noconfirm packaging/ticketdepot.spec
+          Compress-Archive -Path dist/Ticketdepot -DestinationPath "dist/Ticketdepot-$env:VERSION-windows.zip"
+
+      - name: Build (macOS)
+        if: matrix.platform == 'macos-arm64'
+        run: |
+          pyinstaller --noconfirm packaging/ticketdepot.spec
+          mkdir -p build/dmg
+          cp -R dist/Ticketdepot.app build/dmg/
+          ln -s /Applications build/dmg/Programme
+          hdiutil create -volname Ticketdepot -srcfolder build/dmg -ov -format UDZO "dist/Ticketdepot-$VERSION-macos-arm64.dmg"
+
+      - name: Smoke test (the packaged app starts and answers)
+        run: |
+          if [ "${{ matrix.platform }}" = windows ]; then APP="dist/Ticketdepot/Ticketdepot.exe"; else APP="dist/Ticketdepot.app/Contents/MacOS/Ticketdepot"; fi
+          "$APP" --data "$RUNNER_TEMP/smoke" --no-open --no-tray --port 8799 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8799/api/ping && exit 0; sleep 2; done
+          echo "packaged app did not answer"; exit 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ticketdepot-${{ matrix.platform }}
+          path: |
+            dist/Ticketdepot-*-windows.exe
+            dist/Ticketdepot-*-windows.zip
+            dist/Ticketdepot-*-macos-arm64.dmg
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          sed "s/VERSION/$version/g" packaging/RELEASE_NOTES.md > notes.md
+          gh release create "$GITHUB_REF_NAME" artifacts/* --title "Ticketdepot $version" --notes-file notes.md

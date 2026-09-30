@@ -1,0 +1,6 @@
+duckdb>=1.1
+pymupdf>=1.24
+pypdf>=5.0
+pystray>=0.19
+pillow>=10
+pytest>=8

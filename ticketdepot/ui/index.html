@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf" content="{{TOKEN}}">
+  <title>Ticketdepot</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='2' y='2' width='60' height='60' rx='14' fill='teal'/%3E%3Crect x='12' y='20' width='40' height='24' rx='4' fill='white'/%3E%3Ccircle cx='12' cy='32' r='4' fill='teal'/%3E%3Ccircle cx='52' cy='32' r='4' fill='teal'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="12" y="20" width="40" height="24" rx="4" fill="none" stroke="currentColor" stroke-width="4"/>
+        <line x1="38" y1="22" x2="38" y2="42" stroke="currentColor" stroke-width="3" stroke-dasharray="3 3"/>
+      </svg>
+      <h1>Ticketdepot</h1>
+    </div>
+    <div class="actions">
+      <label class="btn primary">
+        PDF importieren
+        <input id="file" type="file" accept="application/pdf,.pdf" multiple hidden>
+      </label>
+      <button class="btn" id="scan" type="button">Aus Downloads</button>
+      <button class="btn" id="check-all" type="button">Verspätungen prüfen</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="tiles" id="tiles" aria-label="Übersicht"></section>
+
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="todo">Zu tun <span class="count" id="count-todo"></span></button>
+      <button role="tab" data-tab="vorrat">Vorrat <span class="count" id="count-vorrat"></span></button>
+      <button role="tab" data-tab="claimed">Beantragt <span class="count" id="count-claimed"></span></button>
+      <button role="tab" data-tab="future">Anstehend <span class="count" id="count-future"></span></button>
+      <button role="tab" data-tab="all">Alle <span class="count" id="count-all"></span></button>
+      <span class="tabs-spacer"></span>
+      <button class="btn ghost small" id="filter-toggle" type="button" aria-expanded="false" hidden>Filter</button>
+    </nav>
+
+    <form id="route" class="route-lookup" hidden autocomplete="off">
+      <span class="route-title">Hast du ein Ticket für …</span>
+      <label>Von <input name="von" list="stations" placeholder="z. B. Düsseldorf"></label>
+      <span aria-hidden="true">→</span>
+      <label>Nach <input name="nach" list="stations" placeholder="z. B. Frankfurt"></label>
+    </form>
+    <datalist id="stations"></datalist>
+
+    <section id="filters" class="filters" hidden aria-label="Filter">
+      <input id="search" type="search" placeholder="Suche: Zug, Bahnhof, Auftrag, Notiz">
+      <div class="chips" id="chips-outcome" role="group" aria-label="Ergebnis"></div>
+      <div class="chips" id="chips-band" role="group" aria-label="Verspätung"></div>
+    </section>
+
+    <p id="result-bar" class="result-bar" hidden><span id="result-count"></span> <button type="button" class="link" id="reset-filters">Filter zurücksetzen</button></p>
+    <div id="progress" class="progress" hidden></div>
+    <section id="list" class="list" aria-live="polite"></section>
+    <div id="empty" class="empty" hidden></div>
+  </main>
+
+  <footer class="foot">
+    Ticketdepot <span id="version">{{VERSION}}</span> · AGPL-3.0 · <button type="button" class="link" id="about-open">Info &amp; Quellen</button>
+  </footer>
+
+  <div id="drop" class="drop" hidden>PDF hier ablegen</div>
+
+  <dialog id="claim-dialog" class="dialog">
+    <form method="dialog" class="dialog-body">
+      <header>
+        <div>
+          <h2 id="claim-title"></h2>
+          <p id="claim-headline" class="muted"></p>
+        </div>
+        <button class="btn ghost small" value="close" aria-label="Schließen">✕</button>
+      </header>
+      <ol class="steps">
+        <li><b>bahn.de öffnen</b> → „Meine Reisen“. Mit Kundenkonto die Reise wählen, sonst Auftragssuche mit Auftragsnummer + Nachname.</li>
+        <li id="claim-step"></li>
+        <li>Angaben unten übernehmen – jede Zeile hat einen Kopieren-Knopf.</li>
+        <li>Nach dem Absenden hier <b>„Antrag abgeschickt“</b> klicken.</li>
+      </ol>
+      <div class="dialog-actions start">
+        <a class="btn primary" id="claim-open" target="_blank" rel="noopener noreferrer">bahn.de öffnen ↗</a>
+        <button type="button" class="btn" id="claim-copy-all">Alle Angaben kopieren</button>
+        <a class="btn ghost small" id="claim-form" target="_blank" rel="noopener noreferrer">Papierformular (Fallback) ↗</a>
+      </div>
+      <dl id="claim-fields" class="fields"></dl>
+      <div id="claim-return" class="return-note" hidden>Zurück von bahn.de – hast du den Antrag abgeschickt?</div>
+      <footer class="dialog-actions">
+        <button class="btn" value="later">Noch nicht</button>
+        <button type="button" class="btn primary" id="claim-done">Antrag abgeschickt</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="about-dialog" class="dialog">
+    <form method="dialog" class="dialog-body">
+      <header>
+        <div>
+          <h2>Ticketdepot <span id="about-version"></span></h2>
+          <p class="muted">Lokale App – deine Daten bleiben auf diesem Rechner.</p>
+        </div>
+        <button class="btn ghost small" value="close" aria-label="Schließen">✕</button>
+      </header>
+      <div class="about">
+        <p><b>Kein Angebot der Deutschen Bahn.</b> Die App wertet deine eigenen Tickets aus und verlinkt die offiziellen Regeln. Verbindlich ist, was die DB entscheidet.</p>
+        <p><b>Verspätungsdaten:</b> DB-Echtzeitdaten (IRIS) aus dem Datensatz <a href="https://huggingface.co/datasets/piebro/deutsche-bahn-data" target="_blank" rel="noopener noreferrer">piebro/deutsche-bahn-data ↗</a>, Lizenz <a href="https://creativecommons.org/licenses/by/4.0/deed.de" target="_blank" rel="noopener noreferrer">CC BY 4.0 ↗</a>. Abgefragt werden nur die Züge deiner Tickets; die Ergebnisse werden lokal gespeichert.</p>
+        <p><b>Idee:</b> Der Datenansatz folgt der Open-Source-App <a href="https://github.com/sha2nkt/delay_bahn" target="_blank" rel="noopener noreferrer">delay_bahn ↗</a>.</p>
+        <p><b>Lizenz:</b> GNU AGPL-3.0. Enthält PyMuPDF (AGPL-3.0), DuckDB (MIT), pypdf (BSD), pystray (LGPL-3.0), Pillow (MIT-CMU).</p>
+        <h3>Regeln <span class="muted" id="about-verified"></span></h3>
+        <ul id="about-rules" class="sources"></ul>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
