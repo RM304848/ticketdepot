@@ -1,4 +1,5 @@
-"""Nachweis-PDF for a Vorrat ticket: the original DB ticket, unchanged, plus one proof page.
+"""Nachweis-PDF for a Vorrat ticket: the original DB ticket, unchanged, plus one proof page,
+plus the user's own proof image (if any) on a page of its own.
 
 The proof page is appended as an incremental update, so the original file's bytes are
 a literal prefix of the output — the pages and the signed Aztec barcode are never
@@ -28,21 +29,22 @@ def filename(view: dict) -> str:
     return f"DB_{view['departure'][:10]}_{train}_gueltig-bis-{view['verdict']['reuse_until']}.pdf"
 
 
-def build(original: Path, view: dict) -> bytes:
+def build(original: Path, view: dict, evidence: bytes | None = None) -> bytes:
     writer = PdfWriter(str(original), incremental=True)  # clones the file, appends on write
-    writer.add_page(PdfReader(io.BytesIO(_proof_page(view))).pages[0])
+    for page in PdfReader(io.BytesIO(_proof_pages(view, evidence))).pages:
+        writer.add_page(page)
     out = io.BytesIO()
     writer.write(out)
     return out.getvalue()
 
 
-def _proof_page(v: dict) -> bytes:
+def _proof_pages(v: dict, evidence: bytes | None) -> bytes:
     verdict = v["verdict"]
     doc = pymupdf.open()
     p = _Page(doc)
     p.text("Zugbindung aufgehoben", 22, True, ACCENT, gap=0)
     p.text(f"gültig bis {_d(verdict['reuse_until'])}", 22, True, ACCENT, gap=6)
-    p.text(_delay(verdict), 30, True, gap=14)
+    p.text(_delay(v), 30, True, gap=14)
     p.rule()
     last = v["legs"][-1]
     p.row("Zug", " · ".join(leg["train"] for leg in v["legs"]))
@@ -54,14 +56,32 @@ def _proof_page(v: dict) -> bytes:
     p.rule()
     if verdict.get("evidence"):
         p.text(verdict["evidence"], 9.5, gap=8)
+    if evidence:
+        p.text("Eigener Nachweis (Bild): nächste Seite.", 9.5, True, gap=8)
     p.text(rules.RULES["zugbindung"].text, 8.5, color=MUTED, gap=4)
     p.text(rules.RULES["zugbindung"].source_url, 7.5, color=MUTED, gap=10)
     checked = v.get("delays_checked")
     fetched = f", abgerufen am {_d(checked)}" if checked else ""
     p.footer(f"Quelle: DB-Echtzeitdaten (IRIS) via piebro/deutsche-bahn-data (CC BY 4.0){fetched}")
+    if evidence:
+        _evidence_page(doc, v, evidence)
     doc.set_metadata({"title": "Nachweis Zugbindung aufgehoben", "creator": "Ticketdepot"})
     doc.subset_fonts()  # the proof page only; the original ticket is never touched
     return doc.tobytes(garbage=3, deflate=True)
+
+
+def _evidence_page(doc: pymupdf.Document, v: dict, image: bytes) -> None:
+    p = _Page(doc)
+    p.text("Eigener Nachweis", 18, True, ACCENT, gap=2)
+    added = f" am {_d(v['evidence_added'])}" if v.get("evidence_added") else ""
+    p.text(f"Vom Fahrgast hinzugefügt{added} · {v['legs'][0]['train']}, {_d(v['departure'])}", 8.5, color=MUTED, gap=10)
+    pix = pymupdf.Pixmap(image)
+    box = pymupdf.Rect(MARGIN, p.y, PAGE.width - MARGIN, PAGE.height - MARGIN)
+    scale = min(box.width / pix.width, box.height / pix.height)
+    w, h = pix.width * scale, pix.height * scale
+    rect = pymupdf.Rect(box.x0 + (box.width - w) / 2, box.y0, box.x0 + (box.width + w) / 2, box.y0 + h)
+    p.page.insert_image(rect, stream=image)
+    p.page.draw_rect(rect, color=(0.8, 0.8, 0.8), width=0.6)  # screenshots are often white on white
 
 
 class _Page:
@@ -94,11 +114,14 @@ class _Page:
         return self.text(s, 7.5, color=MUTED, gap=0)
 
 
-def _delay(verdict: dict) -> str:
+def _delay(v: dict) -> str:
+    verdict = v["verdict"]
     if verdict["disruption"]:
         return verdict["disruption"]
-    if verdict["early_departure"] and (verdict["delay_min"] or 0) < 20:
+    if verdict["early_departure"] and (verdict["delay_min"] or 0) < rules.LIFT_MIN:
         return "Abfahrt zu früh"
+    if v.get("reported") == "zugbindung" and (verdict["delay_min"] or 0) < rules.LIFT_MIN:
+        return f"Prognose ab {rules.LIFT_MIN} min"  # the forecast lifted it, the train made up the delay later
     return f"+{verdict['delay_min']} min"
 
 

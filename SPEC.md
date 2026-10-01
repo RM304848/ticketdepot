@@ -42,6 +42,7 @@ Replace the `usage` field. New/changed columns on `journeys` (SQLite `ALTER TABL
 | `manual_arrival` | existing | Only asked when the booked train didn't get the user there (see 2.3) |
 | `claim_status` | existing: `''` · `beantragt` · `ausgezahlt` · `abgelehnt` · `verzichtet` | |
 | `controlled`, `notes` | existing | Private notes, only in Details, never in any export |
+| `evidence_added` | ISO datetime or NULL | Schema 3. When the user's proof image was stored; the image is `<data dir>/evidence/<journey id>.jpg` |
 
 Migration of existing `usage` values: `gefahren` → `ridden=ja`; `anderer_zug` → `ridden=ja` (keep `manual_arrival`); `nicht_gefahren` → `ridden=nein`, and `choice=erstattung` if `claim_status` is `beantragt`/`ausgezahlt`, else `choice=''` (card will ask); `spaeter` → `ridden=nein`, `choice=vorrat`, `vorrat_used_on` = migration date. Drop the old column afterwards (or leave it unused).
 
@@ -69,6 +70,8 @@ Migration of existing `usage` values: `gefahren` → `ridden=ja`; `anderer_zug` 
 | `nein` + `erstattung` | `Erstattung beantragen` (claim dialog, refund variant) |
 | `nein` + `vorrat`, or `nein` at 20–59 min | Vorrat: `PDF herunterladen`, `In Kalender`, `Ticket genutzt` |
 | `vorrat_used_on` set, or Vorrat expired | done (`Später genutzt` / `Vorrat abgelaufen`) |
+| `Kein Handlungsbedarf`, `Zug nicht in den Daten`, or on the travel day (still upcoming or data not fetched yet) | Link `Zugbindung war aufgehoben? In den Vorrat` (after a confirm): `ridden = nein`, `choice = vorrat`, `reported = zugbindung`. The forecast (≥ 20 min) lifts the Zugbindung even if the train made up the delay later. Proof PDF: `Prognose ab 20 min` + "laut eigener Angabe aufgehoben" |
+| `ja` + `Kein Anspruch` | Link `Doch nicht gefahren? In den Vorrat`: same, without `reported` (the data already lifts it; a manual arrival stays) |
 | `claim_status = beantragt` | `Beantragt am …` + buttons `Ausgezahlt` / `Abgelehnt` |
 | `ausgezahlt` / `abgelehnt` / `verzichtet` | done |
 
@@ -122,6 +125,8 @@ One PDF per Vorrat ticket, shown on the phone at a ticket check, possibly offlin
 - Footer: `Quelle: DB-Echtzeitdaten (IRIS) via piebro/deutsche-bahn-data (CC BY 4.0), abgerufen am <date>`
 - Factual wording, no certificate style. Never claim the ticket was unused. `Kontrolliert?` and notes never appear.
 
+**Own proof image** (optional, Vorrat cards: `Nachweis-Bild hinzufügen`, then thumbnail + `Ersetzen` / `Entfernen`): e.g. a screenshot of the DB message "Zugbindung aufgehoben". Accepts PNG/JPEG up to 20 MB; stored as an upright RGB JPEG (EXIF rotation applied), long side ≤ 2400 px. With an image, the proof page says `Eigener Nachweis (Bild): nächste Seite.` and one more phone-sized page follows: `Eigener Nachweis`, `Vom Fahrgast hinzugefügt am <date> · <train>, <date>`, the image fitted to the page. Appended in the same incremental update; the original stays a byte prefix. Deleting the ticket deletes the image. `GET /evidence/<journey id>.jpg` serves it for the thumbnail.
+
 **Delivery:** `PDF herunterladen` per Vorrat ticket → `GET /proof/<journey id>.pdf` with `Content-Disposition: attachment`.
 Filename: `DB_<YYYY-MM-DD>_<Train>_gueltig-bis-<YYYY-MM-DD>.pdf`, e.g. `DB_2026-08-14_ICE619_gueltig-bis-2027-08-14.pdf` (train without space; multi-leg: first train).
 Hint next to the button: `Tipp: Auf dem Handy in Dateien/Drive speichern, nicht nur im Chat lassen.`
@@ -164,39 +169,34 @@ For every Vorrat ticket and every open claim: `In Kalender` → `.ics` download 
 - All verified on 2026-09-30 (see `RULES` in `rules.py`): Zugbindung/one year, compensation 25/50 % and 4 € minimum (same FAQ page), refund when not travelling (`/service/informationen-buchung/fahrgastrechte/rechtliche-regelungen`), claim deadline (FAQ: 12 months), force majeure (FAQ, Art. 19 Abs. 10), PDF on mobile device.
 - `tools/check_links.py`: requests every `source_url` with a browser User-Agent (`HEAD`, fall back to `GET`); reports OK / broken (404, 410, DNS) / `manuell prüfen` (403, 429, timeouts). Manual run only.
 
-## 8. Visual design: light Health OS neutrals, "Shades of Teal" for interaction
+## 8. Visual design: light and dark, "Shades of Teal" for interaction
 
-Single light theme; ignore `prefers-color-scheme`. The page uses the neutrals of Health OS (bright mode); the teal shades are reserved for interaction and accents. No red "DB" logo box; a neutral ticket glyph and the name "Ticketdepot".
+Two themes, like finctl. **Light:** the neutrals of Health OS (bright mode), teal only for interaction and accents. **Dark:** the original Ticketdepot theme (up to 0.1.3), teal-tinted graphite. The page follows `prefers-color-scheme` until the header button (`◐` wie das Gerät → `☀` hell → `☾` dunkel) picks one; the choice is kept in `localStorage` (`theme`) and applied by an inline script in `index.html` before `style.css` loads, so nothing flashes. No red "DB" logo box; a neutral ticket glyph and the name "Ticketdepot".
 
-All colors are CSS custom properties in **one `:root` block** in `style.css`; no hex anywhere else (including JS and `#fff` in toasts).
+All colors are CSS custom properties in the theme blocks at the top of `style.css`; no hex anywhere else (including JS). The dark tokens stand twice, under `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) }` and under `:root[data-theme="dark"]`; `tests/test_ui.py` keeps them identical. Rules use **role tokens**, never a palette step that differs between themes.
 
-Teal palette (https://www.color-hex.com/color-palette/4666):
+Teal palette (https://www.color-hex.com/color-palette/4666), the same in both themes: `--teal-100` `#b2d8d8`, `--teal-300` `#66b2b2` (hover borders), `--teal-500` `#008080` (primary button fill, white text), `--teal-700` `#006666` (primary hover, selected chips), `--teal-900` `#004c4c`.
 
-| Token | Hex | Use |
-|---|---|---|
-| `--teal-100` | `#b2d8d8` | Tints (mixed with the surface): filter bar, badges, claim/Vorrat cards |
-| `--teal-300` | `#66b2b2` | Hover borders |
-| `--teal-500` | `#008080` | Primary button fill (white text), links, active tab, focus rings, logo |
-| `--teal-700` | `#006666` | Primary hover, selected chips, amounts and emphasis text |
-| `--teal-900` | `#004c4c` | Text on teal tints, toasts |
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `--bg` | `#fffcf5` | `#0e1717` | Page background |
+| `--surface` | `#ffffff` | `#142121` | Cards, tiles, dialog |
+| `--surface-2` | `#faf6ee` | `#1b2b2b` | Answer buttons, options, chips |
+| `--line` | `#e8e1d3` | `#294040` | Borders |
+| `--field` | `#8a8072` | `#5a7d7d` | Input borders (≥ 3:1) |
+| `--text` | `#201c17` | `#e6f0f0` | Body text |
+| `--muted` | `#5f6670` | `#9bb3b3` | Secondary text |
+| `--amber` / `--amber-line` | `#8a5a00` / `#e0a43a` | `#f2b554` | Needs input, deadlines (text / bar) |
+| `--red` | `#b3334f` | `#ff8a80` | Delay badge, `Löschen` |
+| `--accent` | teal-500 | teal-300 | Links, focus rings, active tab, logo, card marks |
+| `--emphasis` | teal-700 | teal-100 | Amounts and emphasis text |
+| `--btn-bg`, `--input-bg` | surface | surface-2, bg | Buttons, inputs |
+| `--tint-bar` / `--tint-bar-text` | teal-100 40 % / teal-900 | teal-900 / teal-100 | Filter bar, route lookup |
+| `--tint-card` | teal-100 22 % | teal-900 35 % | Claim/Vorrat cards |
+| `--badge-bg` / `--badge-text` | teal-100 55 % / teal-900 | teal-900 / teal-100 | Badges |
+| `--toast-bg` / `--toast-text` | teal-900 / white | teal-100 / bg | Toasts (text also on the red error toast) |
 
-Neutrals and semantic colors (Health OS bright mode, same `:root` block):
-
-| Token | Hex | Use |
-|---|---|---|
-| `--bg` | `#fffcf5` | Page background |
-| `--surface` | `#ffffff` | Cards, tiles, buttons, inputs |
-| `--surface-2` | `#faf6ee` | Answer buttons, options, chips |
-| `--line` | `#e8e1d3` | Borders |
-| `--field` | `#8a8072` | Input borders |
-| `--text` | `#201c17` | Body text |
-| `--muted` | `#5f6670` | Secondary text |
-| `--white` | `#ffffff` | Text on teal fills |
-| `--amber` | `#8a5a00` | Needs input, deadlines (text) |
-| `--amber-line` | `#e0a43a` | The same as a bar |
-| `--red` | `#b3334f` | Delay badge, `Löschen` |
-
-Teal = action / money available. Light teals only as tints or decorative borders, never as text on the light background. The proof PDF keeps black on white.
+Every text token holds ≥ 4.5:1 on `--bg` and `--surface` in both themes (tested). Teal = action / money available. The proof PDF keeps black on white.
 
 ## 9. Packaging and release
 
@@ -255,5 +255,5 @@ Verified on bahn.de (2026-10-01): Zugbindung is lifted by expected delay ≥ 20 
 - `delays.py` classifies cancellations from the whole run of the train (finished months): `zugausfall` (whole stretch), `teilausfall` (ended early / started late, with the station), `haltausfall` (train ran through). Raw data only knows the ticket's stations, so the wording stays per stop ("Ankunft in Bonn Hbf entfiel"). Real case: ICE 24 on 14.08.2026 ended in Frankfurt (Main) Hbf.
 - Card badge, evidence text, "Nachweis kopieren" and the proof PDF use these terms; never "Zug ausgefallen" for a Teilausfall.
 - After a cancellation or missed connection the refund answer carries a condition ("nur wenn ≥ 60 min später").
-- `reported` (new column, schema 2): the user's own statement. "Anschluss verpasst?" is offered only for tickets with a transfer and when the data shows none; "Zug fiel aus" when the train is missing from final data (state `missing`). Both are labelled "eigene Angabe" everywhere, including the proof PDF.
+- `reported` (new column, schema 2): the user's own statement. "Anschluss verpasst?" is offered only for tickets with a transfer and when the data shows none; "Zug fiel aus" when the train is missing from final data (state `missing`). A third value, `zugbindung`, is set by `In den Vorrat` (2.2) when the data shows no lifted Zugbindung. All are labelled "eigene Angabe" everywhere, including the proof PDF.
 - Early departure ≥ 1 min at the first origin lifts Zugbindung.

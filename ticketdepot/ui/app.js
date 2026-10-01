@@ -257,7 +257,10 @@ function body(j) {
   const v = j.verdict;
   switch (v.state) {
     case "future":
-      return [h("p", { class: "muted" }, `Reise steht an · ab ${hm(j.departure)}, an ${hm(j.arrival)}`)];
+      return [
+        h("p", { class: "muted" }, `Reise steht an · ab ${hm(j.departure)}, an ${hm(j.arrival)}`),
+        travelDay(j) ? vorratLink(j) : null,
+      ];
     case "waiting":
       return [
         h("p", { class: "headline" }, v.headline),
@@ -266,6 +269,7 @@ function body(j) {
           h("button", { type: "button", class: "btn small", onclick: (e) => checkOne(j.id, e.target.closest(".card")) }, "Verspätung prüfen"),
           h("button", { type: "button", class: "link", onclick: () => toggleArrival(j.id) }, "Ankunft selbst eintragen")),
         state.arrivalOpen.has(j.id) ? arrivalForm(j) : null,
+        travelDay(j) ? vorratLink(j) : null,
       ];
     case "missing":
       return [
@@ -275,9 +279,10 @@ function body(j) {
           h("button", { type: "button", class: "btn", onclick: () => report(j, "ausfall") }, "Zug fiel aus"),
           h("button", { type: "button", class: "link", onclick: () => toggleArrival(j.id) }, "Ankunft selbst eintragen")),
         state.arrivalOpen.has(j.id) ? arrivalForm(j) : null,
+        vorratLink(j),
       ];
     case "no_action":
-      return [h("p", { class: "muted" }, h("b", {}, v.headline), " · ", v.detail), missedLink(j)];
+      return [h("p", { class: "muted" }, h("b", {}, v.headline), " · ", v.detail), missedLink(j), vorratLink(j)];
     case "ask":
       return [
         h("p", { class: "question" }, v.question),
@@ -314,6 +319,7 @@ function body(j) {
         h("p", { class: "muted" }, v.detail, " ", ruleLink(v.rule)),
         j.ridden === "ja" ? otherArrival(j) : null,
         missedLink(j),
+        j.ridden === "ja" ? vorratLink(j) : null,
         changeAnswer(j),
       ];
     default:
@@ -370,8 +376,54 @@ function reuseBody(j) {
       calendarLinks(j),
       h("button", { type: "button", class: "btn", onclick: () => used(j) }, "Ticket genutzt")),
     j.has_pdf ? h("p", { class: "hint" }, "Tipp: Auf dem Handy in Dateien/Drive speichern, nicht nur im Chat lassen.") : null,
+    evidence(j),
     changeAnswer(j),
   ];
+}
+
+// The user's own proof (e.g. a screenshot of the DB message), a page of its own in the Nachweis-PDF.
+function evidence(j) {
+  const input = h("input", { type: "file", accept: "image/png,image/jpeg", hidden: true, onchange: (e) => addEvidence(j, e.target.files[0]) });
+  const pick = (label) => h("button", { type: "button", class: "btn small", onclick: () => input.click() }, label);
+  if (!j.evidence_added) {
+    return h("div", { class: "proof-image" }, input,
+      h("div", {},
+        pick("Nachweis-Bild hinzufügen"),
+        h("p", { class: "note" }, "z. B. Screenshot der DB-Meldung „Zugbindung aufgehoben“. Kommt als eigene Seite ins Nachweis-PDF.")));
+  }
+  const src = `/evidence/${j.id}.jpg?v=${encodeURIComponent(j.evidence_added)}`;
+  return h("div", { class: "proof-image" }, input,
+    h("a", { href: src, target: "_blank", rel: "noopener noreferrer", title: "Bild öffnen" }, h("img", { class: "evidence-thumb", src, alt: "Eigener Nachweis" })),
+    h("div", {},
+      h("p", { class: "note" }, `Nachweis-Bild vom ${de(j.evidence_added)} · im PDF auf der letzten Seite`),
+      h("div", { class: "row" },
+        pick("Ersetzen"),
+        h("button", { type: "button", class: "link small", onclick: () => removeEvidence(j) }, "Entfernen"))));
+}
+
+async function addEvidence(j, file) {
+  if (!file) return;
+  try {
+    const b64 = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result.split(",")[1]);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+    await afterUpdate(await call("add_evidence", j.id, b64));
+    toast("Nachweis-Bild gespeichert – es ist jetzt Teil des PDFs.");
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+async function removeEvidence(j) {
+  if (!confirm("Nachweis-Bild entfernen? Es fehlt dann auch im PDF.")) return;
+  try {
+    await afterUpdate(await call("remove_evidence", j.id));
+  } catch (err) {
+    toast(err.message, true);
+  }
 }
 
 function calendarLinks(j) {
@@ -406,9 +458,33 @@ function missedLink(j) {
     ruleLink("anschluss"));
 }
 
+// Not travelled, ticket kept for later. Without a lifted Zugbindung in the data the user states it:
+// the forecast lifts it, even if the train made up the delay afterwards.
+function vorratLink(j) {
+  const lifted = j.verdict.zugbindung_aufgehoben;
+  return h("p", { class: "note" },
+    h("button", { type: "button", class: "link small", onclick: () => toVorrat(j) }, lifted ? "Doch nicht gefahren? In den Vorrat" : "Zugbindung war aufgehoben? In den Vorrat"),
+    lifted ? null : " Bei einer Prognose ab 20 min am Ziel gilt das, auch wenn der Zug später aufholt. Nur wenn du nicht gefahren bist. ",
+    lifted ? null : ruleLink("zugbindung"));
+}
+
+const travelDay = (j) => j.departure.slice(0, 10) === todayIso();
+
+async function toVorrat(j) {
+  const question = j.verdict.zugbindung_aufgehoben
+    ? `Ticket ${j.origin} → ${j.destination} in den Vorrat? Damit gibst du an, dass du nicht gefahren bist.`
+    : `Ticket ${j.origin} → ${j.destination} in den Vorrat? Damit gibst du an, dass die Zugbindung aufgehoben war (Prognose ab 20 min am Ziel) und du nicht gefahren bist. Das steht so im Nachweis-PDF.`;
+  if (!confirm(question)) return;
+  try {
+    await afterUpdate(await call("to_vorrat", j.id));
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
 function reportedNote(j) {
   if (!j.reported) return null;
-  const what = j.reported === "anschluss" ? "Anschluss verpasst" : "Zug fiel aus";
+  const what = { anschluss: "Anschluss verpasst", ausfall: "Zug fiel aus", zugbindung: "Zugbindung war aufgehoben" }[j.reported];
   return h("p", { class: "note" }, `Deine Angabe: ${what}. `,
     h("button", { type: "button", class: "link small", onclick: () => report(j, "") }, "zurücknehmen"));
 }
@@ -672,6 +748,31 @@ $("#check-all").addEventListener("click", async () => {
 });
 
 // --- import ------------------------------------------------------------------------------
+
+// --- theme: like the device → light → dark, remembered in this browser ---------
+
+const THEMES = [["", "◐", "wie das Gerät"], ["light", "☀\uFE0E", "hell"], ["dark", "☾", "dunkel"]];
+
+function showTheme() {
+  const [, sign, name] = THEMES.find((t) => t[0] === (document.documentElement.dataset.theme || ""));
+  const btn = $("#theme");
+  btn.textContent = sign;
+  btn.title = `Farbthema: ${name}`;
+  btn.setAttribute("aria-label", btn.title);
+}
+
+$("#theme").addEventListener("click", () => {
+  const i = THEMES.findIndex((t) => t[0] === (document.documentElement.dataset.theme || ""));
+  const [next] = THEMES[(i + 1) % THEMES.length];
+  if (next) document.documentElement.dataset.theme = next;
+  else delete document.documentElement.dataset.theme;
+  try {
+    if (next) localStorage.setItem("theme", next);
+    else localStorage.removeItem("theme");
+  } catch (e) { /* private window: just for this page */ }
+  showTheme();
+});
+showTheme();
 
 $("#scan").addEventListener("click", async () => {
   const res = await call("import_downloads");

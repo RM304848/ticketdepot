@@ -9,6 +9,8 @@ import threading
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import pymupdf
+
 from . import __version__, calendar_ics, proof_pdf, rules
 from .delays import BERLIN, check_legs
 from .store import Store, data_dir
@@ -16,6 +18,8 @@ from .ticket_pdf import TicketParseError, parse_ticket_pdf
 
 CLAIM_URL = "https://www.bahn.de/buchung/meine-reisen"
 FORM_URL = "https://www.bahn.de/service/informationen-buchung/fahrgastrechte"
+EVIDENCE_MAX_BYTES = 20 * 1024 * 1024  # a phone photo; screenshots are far smaller
+EVIDENCE_MAX_SIDE = 2400  # px; enough to read a screenshot, keeps the Nachweis-PDF small
 FINAL_AFTER = timedelta(days=2)  # raw IRIS data can still be revised shortly after the trip
 INPUT_STATES = ("ask", "needs_arrival", "choose")
 
@@ -30,6 +34,8 @@ class Api:
         self._lock = threading.Lock()
         self._pdf_dir = data_dir() / "pdfs"
         self._pdf_dir.mkdir(exist_ok=True)
+        self._evidence_dir = data_dir() / "evidence"
+        self._evidence_dir.mkdir(exist_ok=True)
 
     # --- reading -------------------------------------------------------------
 
@@ -108,15 +114,44 @@ class Api:
         return self.update(journey_id, fields)
 
     def report(self, journey_id: int, what: str) -> dict:
-        """The user's own statement: "anschluss" (connection missed) or "ausfall" (train not in the data)."""
-        if what not in ("anschluss", "ausfall", ""):
+        """The user's own statement: "anschluss" (connection missed), "ausfall" (train not in the data)
+        or "zugbindung" (lifted by the forecast, even if the train made up the delay later)."""
+        if what not in ("anschluss", "ausfall", "zugbindung", ""):
             raise ValueError(what)
         return self.update(journey_id, {"reported": what})
 
+    def to_vorrat(self, journey_id: int) -> dict:
+        """Not travelled, ticket kept for later. Where the data shows no lifted Zugbindung, the user states it."""
+        with self._lock:
+            lifted = self._view(self._store.journey(journey_id), _now())["verdict"]["zugbindung_aufgehoben"]
+        fields = {"ridden": "nein", "choice": "vorrat", "vorrat_used_on": None}
+        return self.update(journey_id, fields if lifted else {**fields, "reported": "zugbindung"})
+
+    def add_evidence(self, journey_id: int, content_b64: str) -> dict:
+        """The user's own proof that the Zugbindung was lifted (e.g. a screenshot of the DB message).
+        Stored re-encoded as JPEG; it becomes a page of the Nachweis-PDF."""
+        jpeg = _normalize_image(base64.b64decode(content_b64))
+        with self._lock:
+            self._store.journey(journey_id)  # KeyError for an unknown journey, before anything is written
+            self._evidence_path(journey_id).write_bytes(jpeg)
+            self._store.set_evidence(journey_id, _now().isoformat(timespec="seconds"))
+            return self._view(self._store.journey(journey_id), _now())
+
+    def remove_evidence(self, journey_id: int) -> dict:
+        with self._lock:
+            self._evidence_path(journey_id).unlink(missing_ok=True)
+            self._store.set_evidence(journey_id, None)
+            return self._view(self._store.journey(journey_id), _now())
+
     def delete_ticket(self, order_number: str) -> bool:
         with self._lock:
+            for jid in self._store.journey_ids(order_number):
+                self._evidence_path(jid).unlink(missing_ok=True)
             self._store.delete_ticket(order_number)
         return True
+
+    def _evidence_path(self, journey_id: int) -> Path:
+        return self._evidence_dir / f"{int(journey_id)}.jpg"
 
     # --- delays -------------------------------------------------------------------
 
@@ -181,6 +216,10 @@ class Api:
 
     # --- downloads (GET, see server.py) ---------------------------------------------
 
+    def evidence_image(self, journey_id: int) -> bytes | None:
+        path = self._evidence_path(journey_id)
+        return path.read_bytes() if path.exists() else None
+
     def ticket_pdf(self, order_number: str) -> Path | None:
         with self._lock:
             rows = [r for r in self._store.journeys() if r["order_number"] == order_number]
@@ -193,7 +232,7 @@ class Api:
             view = self._view(row, _now())
         if not view["verdict"]["reuse_until"] or not row["pdf_path"] or not Path(row["pdf_path"]).exists():
             return None
-        return proof_pdf.filename(view), proof_pdf.build(Path(row["pdf_path"]), view)
+        return proof_pdf.filename(view), proof_pdf.build(Path(row["pdf_path"]), view, self.evidence_image(journey_id))
 
     def calendar(self, journey_id: int | None = None) -> tuple[str, bytes] | None:
         """One journey's reminder, or (journey_id None) all open deadlines in one file."""
@@ -251,7 +290,7 @@ class Api:
             "has_pdf": bool(row["pdf_path"]),
             "delays_checked": row["delays_checked"],
             "delays_final": _final(row),
-            **{k: row[k] for k in ("ridden", "choice", "vorrat_used_on", "reported", "controlled", "claim_status", "claim_date", "claim_amount", "manual_arrival", "notes")},
+            **{k: row[k] for k in ("ridden", "choice", "vorrat_used_on", "reported", "controlled", "claim_status", "claim_date", "claim_amount", "manual_arrival", "notes", "evidence_added")},
             "verdict": verdict.to_dict(),
         }
         if verdict.state in ("claim", "reuse"):
@@ -260,6 +299,26 @@ class Api:
         if verdict.reuse_until:
             view["proof_filename"] = proof_pdf.filename(view)
         return view
+
+
+def _normalize_image(data: bytes) -> bytes:
+    """Any image MuPDF can read → upright RGB JPEG, at most EVIDENCE_MAX_SIDE px on the long side.
+    Rendered via a document page: unlike a plain Pixmap, that applies the EXIF rotation of phone photos."""
+    if len(data) > EVIDENCE_MAX_BYTES:
+        raise ValueError(f"Bild zu groß (höchstens {EVIDENCE_MAX_BYTES // 1024 // 1024} MB).")
+    try:
+        pixels = pymupdf.Pixmap(data)
+        with pymupdf.open(stream=data, filetype=_image_type(data)) as doc:
+            page = doc[0]
+            scale = min(max(pixels.width, pixels.height), EVIDENCE_MAX_SIDE) / max(page.rect.width, page.rect.height)
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), alpha=False)
+    except Exception:
+        raise ValueError("Das Bild konnte nicht gelesen werden. Bitte als PNG oder JPEG hochladen (z. B. ein Screenshot).") from None
+    return pix.tobytes("jpeg", jpg_quality=85)
+
+
+def _image_type(data: bytes) -> str:
+    return "png" if data.startswith(b"\x89PNG") else "jpg" if data.startswith(b"\xff\xd8") else "image"
 
 
 def _final(row: dict) -> bool:

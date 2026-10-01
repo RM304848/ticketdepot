@@ -63,6 +63,9 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send(200, pdf.read_bytes(), "application/pdf") if pdf else self.send_error(404)
         if m := re.fullmatch(r"/proof/(\d+)\.pdf", path):
             return self._download(_safe(api.proof, int(m[1])), "application/pdf")
+        if m := re.fullmatch(r"/evidence/(\d+)\.jpg", path):
+            image = api.evidence_image(int(m[1]))
+            return self._send(200, image, "image/jpeg") if image else self.send_error(404)
         if m := re.fullmatch(r"/ics/(\d+)\.ics", path):
             return self._download(_safe(api.calendar, int(m[1])), "text/calendar; charset=utf-8")
         if path == "/ics/alle.ics":
@@ -90,7 +93,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, b"true", "application/json")
             return self.server.quit_soon()
         api = self.server.api
-        if method.startswith("_") or method in ("ticket_pdf", "proof", "calendar") or not callable(getattr(api, method, None)):
+        if method.startswith("_") or method in ("ticket_pdf", "proof", "calendar", "evidence_image") or not callable(getattr(api, method, None)):
             return self.send_error(404)
         args = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"[]")
         try:

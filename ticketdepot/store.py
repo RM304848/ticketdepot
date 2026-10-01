@@ -21,7 +21,7 @@ USER_FIELDS = (
     "claim_date", "claim_amount", "manual_arrival", "notes",
 )  # fmt: skip
 TEXT_FIELDS = ("ridden", "choice", "reported", "controlled", "claim_status")  # '' is a value, not "unset"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tickets (
@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS journeys (
     notes            TEXT,
     delays           TEXT,
     delays_checked   TEXT,
+    evidence_added   TEXT,
     UNIQUE (order_number, idx)
 );
 """
@@ -87,7 +88,8 @@ class Store:
 
     def _migrate(self) -> None:
         """0 → 1: the `usage` dropdown became `ridden` + `choice` + `vorrat_used_on`.
-        1 → 2: `reported` (the user's own "Anschluss verpasst" / "Zug fiel aus")."""
+        1 → 2: `reported` (the user's own "Anschluss verpasst" / "Zug fiel aus").
+        2 → 3: `evidence_added` (when the user's proof image was stored, see Api.add_evidence)."""
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
         if version >= SCHEMA_VERSION:
             return
@@ -95,7 +97,7 @@ class Store:
         with self._db:
             for name, decl in (
                 ("ridden", "TEXT NOT NULL DEFAULT ''"), ("choice", "TEXT NOT NULL DEFAULT ''"),
-                ("vorrat_used_on", "TEXT"), ("reported", "TEXT NOT NULL DEFAULT ''"),
+                ("vorrat_used_on", "TEXT"), ("reported", "TEXT NOT NULL DEFAULT ''"), ("evidence_added", "TEXT"),
             ):  # fmt: skip
                 if name not in cols:
                     self._db.execute(f"ALTER TABLE journeys ADD COLUMN {name} {decl}")
@@ -161,6 +163,13 @@ class Store:
                 "UPDATE journeys SET delays = ?, delays_checked = ? WHERE id = ?",
                 (json.dumps([d.to_dict() for d in delays]), datetime.now().isoformat(timespec="seconds"), journey_id),
             )
+
+    def set_evidence(self, journey_id: int, added: str | None) -> None:
+        with self._db:
+            self._db.execute("UPDATE journeys SET evidence_added = ? WHERE id = ?", (added, journey_id))
+
+    def journey_ids(self, order_number: str) -> list[int]:
+        return [r[0] for r in self._db.execute("SELECT id FROM journeys WHERE order_number = ?", (order_number,))]
 
     def delete_ticket(self, order_number: str) -> None:
         with self._db:

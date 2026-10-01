@@ -16,7 +16,7 @@ Die App ist nicht signiert, deshalb warnt das System beim ersten Start:
 - **Windows:** „Der Computer wurde durch Windows geschützt“ → **Weitere Informationen** → **Trotzdem ausführen**.
 - **macOS:** Start wird blockiert → **Systemeinstellungen → Datenschutz & Sicherheit** → unten **Trotzdem öffnen**.
 
-Beenden über **Beenden** oben rechts auf der Seite oder das Symbol in der Taskleiste bzw. Menüleiste. Die App hat kein Dock-Symbol – vor dem Löschen oder Aktualisieren so beenden. Ein zweiter Start öffnet nur den Browser zur laufenden App. Daten: `%APPDATA%\Ticketdepot` bzw. `~/Library/Application Support/Ticketdepot` – sie bleiben bei Updates erhalten.
+Beenden über **Beenden** oben rechts auf der Seite oder das Symbol in der Taskleiste bzw. Menüleiste. Die App hat kein Dock-Symbol – vor dem Löschen oder Aktualisieren so beenden. Ein zweiter Start öffnet nur den Browser zur laufenden App. Hell oder dunkel: folgt dem Gerät; der Knopf ◐ / ☀ / ☾ oben rechts legt es fest. Daten: `%APPDATA%\Ticketdepot` bzw. `~/Library/Application Support/Ticketdepot` – sie bleiben bei Updates erhalten.
 
 ## Was die App pro Fahrt entscheidet
 
@@ -31,13 +31,14 @@ Beenden über **Beenden** oben rechts auf der Seite oder das Symbol in der Taskl
 
 - **Ausfälle** werden unterschieden: ganzer Abschnitt ausgefallen (Zugausfall), vorzeitig geendet oder später begonnen (Teilausfall), nur dein Halt entfiel (Haltausfall). So steht es auch im Nachweis-PDF.
 - **Anschluss verpasst** erkennt die App aus den Daten. Zeigen die Daten den Umstieg als geschafft, du hast ihn aber trotzdem verpasst: „Anschluss verpasst?“ auf der Karte (nur bei Umstieg auf demselben Ticket). Fehlt ein Zug ganz in den Daten (vorab gestrichen): „Zug fiel aus“.
+- **Zugbindung war aufgehoben, Zug hat später aufgeholt:** Maßgeblich ist die Prognose (ab 20 min am Ziel), nicht die spätere Ankunft. Bist du deshalb nicht gefahren, schiebt „Zugbindung war aufgehoben? In den Vorrat“ das Ticket trotzdem in den Vorrat. Im Nachweis-PDF steht das als eigene Angabe – den Screenshot der DB-Meldung am besten per „Nachweis-Bild hinzufügen“ dazulegen.
 - Hin- und Rückfahrt zu einem Preis: Basis ist der halbe Preis. Entschädigungen unter 4 € zahlt die DB nicht aus.
 - Fristen zählen ab Reisedatum (Abfahrt). Die App setzt für Anträge **3 Monate** (bahn.de nennt 12 Monate); Vorrat-Tickets gelten 1 Jahr.
 - „Bald fällig“: Anträge 21 Tage vor der Frist, Vorrat-Tickets 30 Tage vor Ablauf. Am selben Tag liegt der Kalendereintrag. Ist die eigene Frist verpasst, zeigt die App die Frist laut bahn.de.
 - Grundlage ist die *erwartete* Verspätung; die App sieht die *tatsächliche* als Näherung.
 - Alle Regeln, Schwellen, Texte und die offiziellen bahn.de-Seiten stehen in [`ticketdepot/rules.py`](ticketdepot/rules.py) (`LAST_VERIFIED`). `python tools/check_links.py` prüft die Links.
 
-**Vorrat:** Für ein Ticket, das du später nutzen willst, gibt es ein **Nachweis-PDF**: das Original-Ticket unverändert (Barcode bleibt gültig) plus eine Seite mit Verspätung, Gültigkeit und Quelle. Aufs Handy legen (Dateien/Drive) und bei der Kontrolle zeigen. Dazu **In Kalender** (.ics oder Google Kalender).
+**Vorrat:** Für ein Ticket, das du später nutzen willst, gibt es ein **Nachweis-PDF**: das Original-Ticket unverändert (Barcode bleibt gültig) plus eine Seite mit Verspätung, Gültigkeit und Quelle. Aufs Handy legen (Dateien/Drive) und bei der Kontrolle zeigen. Mit **Nachweis-Bild hinzufügen** kommt ein eigener Beleg dazu, z. B. der Screenshot der DB-Meldung „Zugbindung aufgehoben“: als eigene Seite am Ende des PDFs. Dazu **In Kalender** (.ics oder Google Kalender).
 
 ## Woher die Verspätungen kommen
 

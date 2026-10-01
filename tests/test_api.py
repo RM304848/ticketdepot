@@ -117,6 +117,63 @@ def test_proof_pdf_keeps_the_original_bytes(api):
     assert len(PdfReader(__import__("io").BytesIO(body)).pages) == 2
 
 
+def test_to_vorrat_states_the_lifted_zugbindung_only_when_the_data_lacks_it(api):
+    on_time = _find(api, "ICE 726")["id"]
+    v = api.to_vorrat(on_time)
+    assert v["verdict"]["state"] == "reuse" and v["reported"] == "zugbindung" and v["ridden"] == "nein"
+    proof = pymupdf.open(stream=api.proof(on_time)[1])[-1].get_text().replace("\xa0", " ")
+    assert "Prognose ab 20 min" in proof and "laut eigener Angabe aufgehoben" in proof
+    assert api.reset_answer(on_time)["verdict"]["state"] == "no_action"
+    late = _find(api, "ICE 619")["id"]
+    api.update(late, {"ridden": "ja"})
+    v = api.to_vorrat(late)
+    assert v["verdict"]["state"] == "reuse" and v["reported"] == "" and v["choice"] == "vorrat"
+
+
+def _png(width, height, alpha=False) -> str:
+    pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, width, height), alpha)
+    pix.clear_with(200)
+    return base64.b64encode(pix.tobytes("png")).decode()
+
+
+def test_evidence_image_becomes_a_page_of_the_proof(api):
+    jid = _find(api, "ICE 619")["id"]
+    api.update(jid, {"ridden": "nein", "choice": "vorrat"})
+    v = api.add_evidence(jid, _png(3000, 6000, alpha=True))
+    assert v["evidence_added"].startswith("2026-09-30")
+    stored = pymupdf.Pixmap(api.evidence_image(jid))
+    assert (stored.width, stored.height, stored.alpha) == (1200, 2400, 0)  # long side 2400 px, alpha dropped
+    _, body = api.proof(jid)
+    assert body.startswith(ICE_619.read_bytes())  # still an incremental update of the original
+    with pymupdf.open(stream=body) as doc, pymupdf.open(ICE_619) as src:
+        assert doc.page_count == src.page_count + 2
+        assert "Eigener Nachweis (Bild): nächste Seite." in doc[-2].get_text().replace("\xa0", " ")
+        text = doc[-1].get_text().replace("\xa0", " ")
+        assert "Eigener Nachweis" in text and "hinzugefügt am 30.09.2026" in text and len(doc[-1].get_images()) == 1
+    assert api.remove_evidence(jid)["evidence_added"] is None and api.evidence_image(jid) is None
+    with pymupdf.open(stream=api.proof(jid)[1]) as doc, pymupdf.open(ICE_619) as src:
+        assert doc.page_count == src.page_count + 1
+
+
+def test_evidence_photo_is_turned_upright():
+    pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 40, 20), False)
+    jpeg = pix.tobytes("jpeg")
+    tiff = b"MM\x00\x2a\x00\x00\x00\x08\x00\x01" + b"\x01\x12\x00\x03\x00\x00\x00\x01\x00\x06\x00\x00" + b"\x00" * 4
+    exif = b"\xff\xe1" + (len(tiff) + 8).to_bytes(2, "big") + b"Exif\x00\x00" + tiff  # orientation 6: rotate 90°
+    out = pymupdf.Pixmap(api_module._normalize_image(jpeg[:2] + exif + jpeg[2:]))
+    assert (out.width, out.height) == (20, 40)
+
+
+def test_evidence_rejects_non_images_and_goes_with_the_ticket(api):
+    jid = _find(api, "ICE 2466")["id"]
+    with pytest.raises(ValueError, match="PNG oder JPEG"):
+        api.add_evidence(jid, base64.b64encode(b"%PDF-1.7 not an image").decode())
+    assert api.evidence_image(jid) is None
+    api.add_evidence(jid, _png(40, 80))
+    api.delete_ticket(_find(api, "ICE 2466")["order_number"])
+    assert api.evidence_image(jid) is None
+
+
 def test_no_proof_outside_the_vorrat(api):
     assert api.proof(_find(api, "ICE 619")["id"]) is None
 
@@ -219,5 +276,5 @@ def test_migration_1_to_2_keeps_newer_answers(tmp_path):
     con.close()
     Store(db)
     con = sqlite3.connect(db)
-    assert con.execute("SELECT ridden, choice, reported FROM journeys").fetchone() == ("ja", "", "")
-    assert con.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert con.execute("SELECT ridden, choice, reported, evidence_added FROM journeys").fetchone() == ("ja", "", "", None)
+    assert con.execute("PRAGMA user_version").fetchone()[0] == 3

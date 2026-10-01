@@ -184,3 +184,26 @@ def test_past_the_apps_deadline_points_to_dbs_limit():
     assert (after.due, after.overdue, after.due_soon, after.action_date) == ("2027-08-01", True, True, "2026-11-05")
     vorrat = run_single(30, ridden="nein", now=datetime(2026, 11, 5, 12, 0))
     assert (vorrat.due, vorrat.overdue) == ("2027-08-01", False)
+
+
+def test_forecast_lifted_zugbindung_although_the_train_made_up_the_delay():
+    on_time = run_single(5)
+    assert on_time.state == "no_action" and not on_time.zugbindung_aufgehoben
+    v = run_single(5, reported="zugbindung", ridden="nein", choice="vorrat")
+    assert v.state == "reuse" and v.zugbindung_aufgehoben and v.reuse_until == "2027-08-01"
+    assert v.evidence.startswith("Zugbindung für ICE 1 am 01.08.2026 laut eigener Angabe aufgehoben")
+    assert "(+5 min)" in v.evidence and "Quelle: DB-Echtzeitdaten (IRIS)" in v.evidence
+    asked = run_single(5, reported="zugbindung")
+    assert asked.state == "ask" and asked.answers["nein"]["kind"] == "vorrat"
+    assert asked.answers["ja"]["kind"] == "kein_anspruch" and asked.detail.startswith("Zugbindung aufgehoben (eigene Angabe)")
+    assert run_single(75, reported="zugbindung").answers["nein"]["kind"] == "erstattung"  # the data says more
+
+
+def test_stated_zugbindung_without_any_data():
+    missing = [LegDelay("ICE 1", "not_found", "monthly")]
+    v = evaluate(SINGLE, 29.99, missing, reported="zugbindung", ridden="nein", choice="vorrat", now=NOW)
+    assert v.state == "reuse" and "IRIS" not in v.evidence
+    asked = evaluate(SINGLE, 29.99, None, reported="zugbindung", now=NOW)
+    assert asked.state == "ask" and asked.answers["ja"]["kind"] == "ankunft"
+    on_the_day = evaluate(SINGLE, 29.99, None, reported="zugbindung", ridden="nein", choice="vorrat", now=DEP - timedelta(hours=1))
+    assert on_the_day.state == "reuse"
