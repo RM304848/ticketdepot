@@ -17,11 +17,11 @@ from .delays import LegDelay
 from .models import Journey, Ticket
 
 USER_FIELDS = (
-    "ridden", "choice", "vorrat_used_on", "controlled", "claim_status",
+    "ridden", "choice", "vorrat_used_on", "reported", "controlled", "claim_status",
     "claim_date", "claim_amount", "manual_arrival", "notes",
 )  # fmt: skip
-TEXT_FIELDS = ("ridden", "choice", "controlled", "claim_status")  # '' is a value, not "unset"
-SCHEMA_VERSION = 1
+TEXT_FIELDS = ("ridden", "choice", "reported", "controlled", "claim_status")  # '' is a value, not "unset"
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tickets (
@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS journeys (
     ridden           TEXT NOT NULL DEFAULT '',
     choice           TEXT NOT NULL DEFAULT '',
     vorrat_used_on   TEXT,
+    reported         TEXT NOT NULL DEFAULT '',
     controlled       TEXT NOT NULL DEFAULT '',
     claim_status     TEXT NOT NULL DEFAULT '',
     claim_date       TEXT,
@@ -85,15 +86,20 @@ class Store:
         self._migrate()
 
     def _migrate(self) -> None:
-        """Schema 0 → 1: the `usage` dropdown became `ridden` + `choice` + `vorrat_used_on`."""
-        if self._db.execute("PRAGMA user_version").fetchone()[0] >= SCHEMA_VERSION:
+        """0 → 1: the `usage` dropdown became `ridden` + `choice` + `vorrat_used_on`.
+        1 → 2: `reported` (the user's own "Anschluss verpasst" / "Zug fiel aus")."""
+        version = self._db.execute("PRAGMA user_version").fetchone()[0]
+        if version >= SCHEMA_VERSION:
             return
         cols = {r[1] for r in self._db.execute("PRAGMA table_info(journeys)")}
         with self._db:
-            for name, decl in (("ridden", "TEXT NOT NULL DEFAULT ''"), ("choice", "TEXT NOT NULL DEFAULT ''"), ("vorrat_used_on", "TEXT")):
+            for name, decl in (
+                ("ridden", "TEXT NOT NULL DEFAULT ''"), ("choice", "TEXT NOT NULL DEFAULT ''"),
+                ("vorrat_used_on", "TEXT"), ("reported", "TEXT NOT NULL DEFAULT ''"),
+            ):  # fmt: skip
                 if name not in cols:
                     self._db.execute(f"ALTER TABLE journeys ADD COLUMN {name} {decl}")
-            if "usage" in cols:
+            if version == 0 and "usage" in cols:  # only once: later versions keep the old column unused
                 today = date.today().isoformat()
                 self._db.execute("UPDATE journeys SET ridden = 'ja' WHERE usage IN ('gefahren', 'anderer_zug')")
                 self._db.execute(

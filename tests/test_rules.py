@@ -191,7 +191,7 @@ def test_cancelled_train_asks_for_the_arrival_when_ridden():
     v = run(0, cancelled=True)
     assert v.answers["ja"]["kind"] == "ankunft" and v.answers["nein"]["kind"] == "erstattung"
     v = run(0, cancelled=True, ridden="ja")
-    assert v.state == "needs_arrival" and "ausgefallen" in v.detail
+    assert v.state == "needs_arrival" and "Ausfall" in v.detail
     v = run(0, cancelled=True, ridden="ja", manual_arrival=ARR + timedelta(minutes=87))
     assert v.state == "claim" and v.amount_eur == 7.50 and v.band == "ausfall"
 

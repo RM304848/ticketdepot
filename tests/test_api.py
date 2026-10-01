@@ -188,3 +188,24 @@ def test_data_from_the_old_app_name_is_taken_over(tmp_path, monkeypatch):
     assert new.name in ("Ticketdepot", "ticketdepot") and not old.exists()
     (row,) = Store().journeys()
     assert Path(row["pdf_path"]) == new / "pdfs" / "900000000909.pdf"
+
+
+def test_migration_1_to_2_keeps_newer_answers(tmp_path):
+    db = tmp_path / "v1.sqlite"
+    con = sqlite3.connect(db)
+    con.executescript(
+        """CREATE TABLE tickets (order_number TEXT PRIMARY KEY, data TEXT NOT NULL, pdf_path TEXT, imported_at TEXT NOT NULL);
+           CREATE TABLE journeys (id INTEGER PRIMARY KEY, order_number TEXT NOT NULL, idx INTEGER NOT NULL, data TEXT NOT NULL,
+             usage TEXT NOT NULL DEFAULT '', ridden TEXT NOT NULL DEFAULT '', choice TEXT NOT NULL DEFAULT '', vorrat_used_on TEXT,
+             controlled TEXT NOT NULL DEFAULT '', claim_status TEXT NOT NULL DEFAULT '', claim_date TEXT, claim_amount REAL,
+             manual_arrival TEXT, notes TEXT, delays TEXT, delays_checked TEXT, UNIQUE (order_number, idx));
+           PRAGMA user_version = 1;"""
+    )
+    # answered "ja" in 0.1.x although the stale 0.0 column still says "nicht_gefahren"
+    con.execute("INSERT INTO journeys (order_number, idx, data, usage, ridden) VALUES ('x', 0, '{}', 'nicht_gefahren', 'ja')")
+    con.commit()
+    con.close()
+    Store(db)
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT ridden, choice, reported FROM journeys").fetchone() == ("ja", "", "")
+    assert con.execute("PRAGMA user_version").fetchone()[0] == 2

@@ -50,10 +50,24 @@ class LegDelay:
     arr_actual: str | None = None
     arr_cancelled: bool = False
     message: str | None = None
+    # What a cancellation means, where the data shows the whole run (finished months):
+    cancel_kind: str | None = None  # "zugausfall" | "teilausfall" | "haltausfall" | None (unknown)
+    dep_note: str | None = None  # at the origin: "halt" (ran through) | "start" (began later)
+    arr_note: str | None = None  # at the destination: "halt" (ran through) | "end" (ended earlier)
+    started_at: str | None = None  # first station served after the origin
+    ended_at: str | None = None  # last station served before the destination
 
     @property
     def cancelled(self) -> bool:
         return self.dep_cancelled or self.arr_cancelled
+
+    @property
+    def early_departure_min(self) -> int:
+        """Minutes the train left before its planned time (a timetable change)."""
+        if not (self.dep_planned and self.dep_actual) or self.dep_cancelled:
+            return 0
+        delta = datetime.fromisoformat(self.dep_planned) - datetime.fromisoformat(self.dep_actual)
+        return max(0, round(delta.total_seconds() / 60))
 
     @property
     def arrival_delay_min(self) -> int | None:
@@ -67,7 +81,8 @@ class LegDelay:
 
     @classmethod
     def from_dict(cls, d: dict) -> LegDelay:
-        return cls(**d)
+        known = cls.__dataclass_fields__
+        return cls(**{k: v for k, v in d.items() if k in known})
 
 
 def split_train(train: str) -> tuple[str, str]:
@@ -146,7 +161,7 @@ def _leg_from_stops(leg: Leg, stops: list[dict]) -> LegDelay:
     arr = find(leg.destination, "arr_pt", leg.arrival)
     if not arr:
         return LegDelay(leg.train, "not_found", "monthly", message=f"{leg.train} nicht in den Daten gefunden.")
-    return LegDelay(
+    result = LegDelay(
         leg.train,
         "ok",
         "monthly",
@@ -157,6 +172,56 @@ def _leg_from_stops(leg: Leg, stops: list[dict]) -> LegDelay:
         arr_actual=_iso(arr["arr_ct"] or arr["arr_pt"]),
         arr_cancelled=bool(arr["arr_cancel"]),
     )
+    if result.cancelled and dep:
+        run = [s for s in stops if _same_run(s, kind, number, dep)]
+        run.sort(key=lambda s: s["arr_pt"] or s["dep_pt"])
+        _classify(result, run, dep, arr)
+    return result
+
+
+def _same_run(s: dict, kind: str, number: str, ref: dict) -> bool:
+    """A stop of the same train run as `ref` (same number and type, within 12 hours)."""
+    if s["number"] != number and (s["line"] or "").upper() not in (number, kind + number):
+        return False
+    if s["type"] and ref["type"] and s["type"] != ref["type"]:
+        return False
+    t, r = s["arr_pt"] or s["dep_pt"], ref["dep_pt"] or ref["arr_pt"]
+    return abs(t - r) <= timedelta(hours=12)
+
+
+def _classify(d: LegDelay, run: list[dict], dep: dict, arr: dict) -> None:
+    """Zugausfall, Teilausfall or Haltausfall, from which stops of the run were served.
+
+    Real example (ICE 24, 14.08.2026, ticket Hanau → Bonn): left Hanau, ended in
+    Frankfurt (Main) Hbf, every stop after that cancelled → Teilausfall, ended_at Frankfurt.
+    """
+    if dep not in run or arr not in run:
+        return
+    i, j = run.index(dep), run.index(arr)
+    between = run[i + 1 : j]
+
+    def served_arr(s: dict) -> bool:
+        return bool(s["arr_pt"]) and not s["arr_cancel"]
+
+    def served_dep(s: dict) -> bool:
+        return bool(s["dep_pt"]) and not s["dep_cancel"]
+
+    if d.dep_cancelled and d.arr_cancelled and not any(served_arr(s) or served_dep(s) for s in between):
+        d.cancel_kind = "zugausfall"
+        return
+    if d.dep_cancelled:
+        if any(served_dep(s) for s in run[:i]):
+            d.dep_note = "halt"  # the train came through without stopping
+        else:
+            d.dep_note = "start"
+            d.started_at = next((s["station"] for s in between if served_dep(s)), None)
+    if d.arr_cancelled:
+        if any(served_arr(s) for s in run[j + 1 :]):
+            d.arr_note = "halt"
+        else:
+            d.arr_note = "end"
+            d.ended_at = next((s["station"] for s in reversed(between) if served_arr(s)), None)
+    d.cancel_kind = "teilausfall" if "start" in (d.dep_note, d.arr_note) or "end" in (d.dep_note, d.arr_note) else "haltausfall"
 
 
 # --- raw IRIS responses (current month) -------------------------------------

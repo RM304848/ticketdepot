@@ -4,11 +4,13 @@ Everything policy-related lives here: thresholds, percentages, deadlines, the te
 the UI and the proof PDF show, and the bahn.de page behind each rule. A policy
 change is an edit to this file only.
 
-- Expected delay ≥ 20 min at the destination (or a cancelled train / missed
-  connection): Zugbindung lifted. The journey may be made later, up to one year
-  after the original travel date.
+- Expected delay ≥ 20 min at the destination, Zugausfall, Haltausfall, a missed
+  connection on the same ticket, or an early departure after a timetable change:
+  Zugbindung lifted. The journey may be made later, up to one year after the
+  original travel date.
 - Expected delay ≥ 60 min and the journey is not made: the unused journey's fare
-  is refunded. Refund and later use are alternatives.
+  is refunded. A cancellation alone is not enough; the arrival must be expected
+  ≥ 60 min late. Refund and later use are alternatives.
 - Travelled and arrived ≥ 60 / ≥ 120 min late: 25 % / 50 % of the fare. A Hin- und
   Rückfahrt priced as one is compensated on half the price. Below 4 € nothing is paid.
 - Deadlines count from the travel date (departure of the first leg).
@@ -53,9 +55,11 @@ class Rule:
 RULES = {
     "zugbindung": Rule(
         "Zugbindung aufgehoben",
-        f"Ab {LIFT_MIN} min erwarteter Verspätung am Ziel (oder bei Zugausfall) ist die Zugbindung aufgehoben. "
-        "Die Fahrt darf bis zu einem Jahr nach dem ursprünglichen Reisedatum nachgeholt werden, auch über eine "
-        "andere Strecke. Gilt nicht für erheblich ermäßigte Fahrkarten (z. B. Deutschland-Ticket, Länder-Tickets).",
+        f"Die Zugbindung ist aufgehoben bei erwarteter Verspätung am Ziel ab {LIFT_MIN} min, bei Zugausfall, bei "
+        "Haltausfall, bei verpasstem Anschluss auf derselben Fahrkarte und bei verfrühter Abfahrt durch eine "
+        "Fahrplanänderung. Die Fahrt darf bis zu einem Jahr nach dem ursprünglichen Reisedatum nachgeholt werden, "
+        "auch über eine andere Strecke. Gilt nicht für erheblich ermäßigte Fahrkarten (z. B. Deutschland-Ticket, "
+        "Länder-Tickets).",
         FAQ + "zugbindung-aufgehoben-bedeutung",
     ),
     "entschaedigung": Rule(
@@ -72,8 +76,9 @@ RULES = {
     "erstattung": Rule(
         "Erstattung",
         f"Bei einer erwarteten Verspätung am Ziel von {REFUND_MIN} min oder mehr kannst du von der Reise "
-        "zurücktreten und bekommst den Fahrpreis des nicht genutzten Teils zurück. Entweder Geld zurück oder "
-        "später fahren – nicht beides.",
+        "zurücktreten und bekommst den Fahrpreis des nicht genutzten Teils zurück – auch bei Zugausfall oder "
+        f"verpasstem Anschluss nur, wenn du dadurch mindestens {REFUND_MIN} min später angekommen wärst. "
+        "Entweder Geld zurück oder später fahren – nicht beides.",
         "https://www.bahn.de/service/informationen-buchung/fahrgastrechte/rechtliche-regelungen",
     ),
     "frist": Rule(
@@ -90,6 +95,13 @@ RULES = {
         "nicht für Erstattung oder spätere Nutzung.",
         FAQ + "gibt-es-auch-faelle-in-denen-ich-keine-verspaetungsentschaedigung-erhalte",
     ),
+    "anschluss": Rule(
+        "Anschluss verpasst",
+        "Ein verpasster Anschluss hebt die Zugbindung auf, auch wenn der Zubringer nur wenig Verspätung hatte – "
+        "aber nur, wenn beide Züge auf derselben Fahrkarte stehen. Mehrere Fahrkarten sind getrennte Verträge. "
+        "Verspätungen von U-Bahn, Straßenbahn, Bus oder Taxi zählen nicht.",
+        FAQ + "welche-fahrgastrechte-ansprueche-habe-ich-wenn-ich-mehrere-fahrkarten-nutze",
+    ),
     "pdf_ticket": Rule(
         "Ticket als PDF",
         "Online-Tickets dürfen als PDF auf Laptop, Tablet oder Smartphone vorgezeigt werden.",
@@ -97,6 +109,7 @@ RULES = {
     ),
 }
 
+REFUND_CONDITION = f"Nur wenn du dadurch mindestens {REFUND_MIN} min später angekommen wärst – sonst später fahren."
 FORCE_MAJEURE_LINE = "Ausnahme möglich bei höherer Gewalt (z. B. Naturkatastrophe, Polizeieinsatz)"
 RULE_LINK_LABEL = "Regel bei bahn.de ↗"
 
@@ -175,6 +188,11 @@ class Outcome:
     delay_min: int | None  # at the final destination; None if cancelled/missed
     cancelled: bool = False
     missed_connection: bool = False
+    early_departure: bool = False  # left before the planned time (timetable change)
+    label: str | None = None  # "Teilausfall", "Anschluss verpasst (eigene Angabe)", ...
+    reported: str = ""  # "anschluss" | "ausfall": the user's statement, not the data
+    missed_at: str | None = None  # the transfer station of a missed connection
+    missing: bool = False  # the data is final but the train is not in it
 
     @property
     def disrupted(self) -> bool:
@@ -191,17 +209,22 @@ class Answer:
     note: str = ""
     rule: str = ""  # key into RULES
     force_majeure: bool = False
+    condition: str = ""  # shown with the answer when it only holds under a condition
 
 
 @dataclass
 class Verdict:
-    state: str  # future | waiting | no_action | ask | needs_arrival | choose | claim | claimed | reuse | none | done
+    state: str  # future | waiting | missing | no_action | ask | needs_arrival | choose | claim | claimed | reuse | none | done
     headline: str
     detail: str = ""
     travel_date: str | None = None
     delay_min: int | None = None
     cancelled: bool = False
     missed_connection: bool = False
+    early_departure: bool = False
+    disruption: str | None = None  # badge text: "Zugausfall", "Teilausfall", "Haltausfall", "Anschluss verpasst", ...
+    reported: str = ""
+    can_report_missed: bool = False  # offer "Anschluss verpasst?" (only with a transfer on this ticket)
     zugbindung_aufgehoben: bool | None = None
     claim_deadline: str | None = None  # the app's deadline (3 months)
     claim_limit: str | None = None  # DB's limit (12 months)
@@ -228,20 +251,61 @@ class Verdict:
         return asdict(self)
 
 
-def journey_outcome(journey: Journey, delays: list[LegDelay] | None) -> Outcome:
-    if not delays or any(d.status != "ok" for d in delays):
+def journey_outcome(journey: Journey, delays: list[LegDelay] | None, reported: str = "") -> Outcome:
+    if reported == "ausfall":  # the train is not in the data and the user says it was cancelled
+        return Outcome(True, None, cancelled=True, label="Ausfall (eigene Angabe)", reported=reported)
+    if not delays or any(d.status == "pending" for d in delays):
         return Outcome(False, None)
+    if any(d.status != "ok" for d in delays):
+        return Outcome(False, None, missing=True)
     cancelled = any(d.cancelled for d in delays)
-    missed = False
+    missed_at = None
     for leg, d, nxt, nd in zip(journey.legs, delays, journey.legs[1:], delays[1:]):
         arrived = datetime.fromisoformat(d.arr_actual) if d.arr_actual else leg.arrival
         leaves = datetime.fromisoformat(nd.dep_actual) if nd.dep_actual else nxt.departure
-        if arrived + MIN_TRANSFER > leaves:
-            missed = True
-    if cancelled or missed:
+        if arrived + MIN_TRANSFER > leaves and missed_at is None:
+            missed_at = leg.destination
+    early = delays[0].early_departure_min >= 1
+    if reported == "anschluss" and not cancelled and missed_at is None:
+        transfers = [leg.destination for leg in journey.legs[:-1]]
+        return Outcome(True, None, missed_connection=True, early_departure=early, label="Anschluss verpasst (eigene Angabe)",
+                       reported=reported, missed_at=transfers[0] if len(transfers) == 1 else None)  # fmt: skip
+    if cancelled or missed_at:
         # the real arrival depends on the replacement train: unknown without the user's input
-        return Outcome(True, None, cancelled=cancelled, missed_connection=missed)
-    return Outcome(True, delays[-1].arrival_delay_min)
+        label = _cancel_label(delays) if cancelled else "Anschluss verpasst"
+        return Outcome(True, None, cancelled, missed_at is not None, early, label, missed_at=missed_at)
+    return Outcome(True, delays[-1].arrival_delay_min, early_departure=early)
+
+
+def _cancel_label(delays: list[LegDelay]) -> str:
+    kinds = {d.cancel_kind for d in delays if d.cancelled}
+    for kind, label in (("zugausfall", "Zugausfall"), ("teilausfall", "Teilausfall"), ("haltausfall", "Haltausfall")):
+        if kind in kinds:
+            return label
+    return "Ausfall"
+
+
+def cancellation_text(leg, d: LegDelay) -> str:
+    """One factual sentence for a cancelled leg, as precise as the data allows."""
+    if d.cancel_kind == "zugausfall":
+        return f"{leg.train} fiel zwischen {leg.origin} und {leg.destination} aus."
+    parts = []
+    if d.dep_cancelled:
+        if d.dep_note == "halt":
+            parts.append(f"hielt nicht in {leg.origin}")
+        elif d.dep_note == "start":
+            parts.append(f"begann erst in {d.started_at}" if d.started_at else f"fuhr nicht ab {leg.origin}")
+        else:
+            parts.append(f"Abfahrt in {leg.origin} entfiel")
+    if d.arr_cancelled:
+        if d.arr_note == "halt":
+            parts.append(f"hielt nicht in {leg.destination}")
+        elif d.arr_note == "end":
+            parts.append(f"endete vorzeitig in {d.ended_at}" if d.ended_at else f"erreichte {leg.destination} nicht")
+        else:
+            parts.append(f"Ankunft in {leg.destination} entfiel")
+    day = leg.departure.strftime("%d.%m.%Y")
+    return f"{leg.train} am {day}: " + "; ".join(parts) + "."
 
 
 def evaluate(
@@ -255,11 +319,12 @@ def evaluate(
     claim_status: str = "",
     manual_arrival: datetime | None = None,
     now: datetime | None = None,
+    reported: str = "",
 ) -> Verdict:
     now = now or datetime.now()
     today = now.date()
     travel = journey.departure.date()
-    iris = journey_outcome(journey, delays)
+    iris = journey_outcome(journey, delays, reported)
     manual_delay = _minutes(manual_arrival - journey.arrival) if manual_arrival else None
     v = Verdict(
         "waiting",
@@ -268,6 +333,9 @@ def evaluate(
         delay_min=manual_delay if manual_delay is not None else iris.delay_min,
         cancelled=iris.cancelled,
         missed_connection=iris.missed_connection,
+        early_departure=iris.early_departure,
+        disruption=iris.label,
+        reported=iris.reported,
         claim_deadline=_add_months(travel, CLAIM_DEADLINE_MONTHS).isoformat(),
         claim_limit=_add_months(travel, DB_CLAIM_LIMIT_MONTHS).isoformat(),
     )
@@ -277,6 +345,10 @@ def evaluate(
     if journey.arrival > now and manual_arrival is None:
         v.state, v.headline = "future", "Reise steht noch an"
         return v
+    if iris.missing and manual_delay is None:
+        v.state, v.headline = "missing", "Zug nicht in den Daten"
+        v.detail = "Vielleicht wurde er vorab gestrichen. Ist er ausgefallen? Sonst trag deine Ankunft selbst ein."
+        return v
     if not iris.known and manual_delay is None:
         v.headline = "Verspätung noch nicht abgerufen"
         v.detail = "Die Daten kommen einige Stunden nach der Fahrt. Oder trag deine Ankunft selbst ein."
@@ -284,11 +356,12 @@ def evaluate(
 
     expected = iris.delay_min if iris.known else manual_delay  # what the booked train did
     disrupted = iris.disrupted
-    lifted = disrupted or (expected or 0) >= LIFT_MIN
+    lifted = disrupted or iris.early_departure or (expected or 0) >= LIFT_MIN
     refund_possible = disrupted or (expected or 0) >= REFUND_MIN
     what = _describe(iris, expected)
     v.zugbindung_aufgehoben = lifted
     v.band = band_for(expected, disrupted)
+    v.can_report_missed = len(journey.legs) > 1 and not disrupted and iris.known
     if not lifted:
         v.state, v.headline = "no_action", "Kein Handlungsbedarf"
         v.detail = f"{what} – unter {LIFT_MIN} min gibt es weder Entschädigung noch Erstattung."
@@ -297,12 +370,16 @@ def evaluate(
 
     v.reuse_limit = _add_months(travel, REUSE_MONTHS).isoformat()
     v.evidence = _evidence(journey, delays, iris, manual_delay if not iris.known else None)
+    if iris.early_departure and not disrupted and (expected or 0) < LIFT_MIN:
+        what = f"{what} · Abfahrt {delays[0].early_departure_min} min zu früh"
     ja = _ja_answer(iris, manual_delay, price_basis)
     refund = Answer("erstattung", f"{_eur(price_basis)} zurück", price_basis,
-                    f"Rücktritt wegen ≥ {REFUND_MIN} min erwarteter Verspätung", "erstattung")  # fmt: skip
+                    f"Rücktritt wegen ≥ {REFUND_MIN} min erwarteter Verspätung", "erstattung",
+                    condition=REFUND_CONDITION if disrupted and (expected or 0) < REFUND_MIN else "")  # fmt: skip
+    why_lifted = "Abfahrt früher als geplant (Fahrplanänderung)" if iris.early_departure and not disrupted and (expected or 0) < LIFT_MIN else "Zugbindung aufgehoben"
     vorrat = Answer("vorrat", f"später fahren bis {_de(v.reuse_limit)}", None,
-                    "Zugbindung aufgehoben – Fahrt später nachholen", "zugbindung")  # fmt: skip
-    v.sources = ["zugbindung"] + (["erstattung"] if refund_possible else [])
+                    f"{why_lifted} – Fahrt später nachholen", "zugbindung")  # fmt: skip
+    v.sources = ["zugbindung"] + (["anschluss"] if iris.missed_connection else []) + (["erstattung"] if refund_possible else [])
     if ja.kind in ("entschaedigung", "kein_anspruch", "ankunft"):
         v.sources += ["entschaedigung"] + (["mindestbetrag"] if ja.rule == "mindestbetrag" else [])
     if ja.kind == "entschaedigung" or refund_possible:
@@ -339,8 +416,7 @@ def evaluate(
 
 def _ja_answer(iris: Outcome, manual_delay: int | None, basis: float) -> Answer:
     if manual_delay is None and iris.disrupted:
-        why = "Zug ausgefallen" if iris.cancelled else "Anschluss verpasst"
-        return Answer("ankunft", "Ankunft eintragen", note=f"{why} – deine Ankunft am Ziel ist nicht bekannt.", rule="entschaedigung")
+        return Answer("ankunft", "Ankunft eintragen", note=f"{iris.label} – deine Ankunft am Ziel ist nicht bekannt.", rule="entschaedigung")
     delay = manual_delay if manual_delay is not None else iris.delay_min
     pct = _pct(delay)
     if pct == 0:
@@ -421,27 +497,35 @@ def _expire(v: Verdict, today: date) -> None:
 def _evidence(journey: Journey, delays: list[LegDelay] | None, iris: Outcome, manual_delay: int | None) -> str:
     if manual_delay is not None:
         return f"Ankunft {journey.destination} laut eigener Angabe {manual_delay} min später als geplant."
+    if iris.reported == "ausfall":
+        trains = ", ".join(leg.train for leg in journey.legs)
+        return f"{trains} am {journey.departure:%d.%m.%Y} laut eigener Angabe ausgefallen; in den DB-Echtzeitdaten nicht enthalten."
     parts = []
-    for leg, d in zip(journey.legs, delays or []):
-        day = leg.departure.strftime("%d.%m.%Y")
+    for i, (leg, d) in enumerate(zip(journey.legs, delays or [])):
         if d.cancelled:
-            parts.append(f"{leg.train} ({leg.origin} → {leg.destination}) am {day} ausgefallen.")
-        elif (d.arrival_delay_min or 0) > 0:
+            parts.append(cancellation_text(leg, d))
+            continue
+        if i == 0 and d.early_departure_min:
+            actual = datetime.fromisoformat(d.dep_actual)
+            parts.append(
+                f"{leg.train} fuhr am {actual:%d.%m.%Y} um {actual:%H:%M} statt {leg.departure:%H:%M} in {leg.origin} ab "
+                f"({d.early_departure_min} min zu früh)."
+            )
+        if (d.arrival_delay_min or 0) > 0:
             actual = datetime.fromisoformat(d.arr_actual)
             parts.append(
                 f"{leg.train} kam am {actual:%d.%m.%Y} um {actual:%H:%M} statt {leg.arrival:%H:%M} "
                 f"in {leg.destination} an (+{d.arrival_delay_min} min)."
             )
     if iris.missed_connection:
-        parts.append("Anschluss verpasst.")
+        where = f" in {iris.missed_at}" if iris.missed_at else ""
+        parts.append(f"Anschluss{where} laut eigener Angabe verpasst." if iris.reported == "anschluss" else f"Anschluss{where} verpasst.")
     return " ".join(parts) + " Quelle: DB-Echtzeitdaten (IRIS)."
 
 
 def _describe(iris: Outcome, delay: int | None) -> str:
-    if iris.cancelled:
-        return "Zug ausgefallen"
-    if iris.missed_connection:
-        return "Anschluss verpasst"
+    if iris.label:
+        return iris.label
     return f"{delay} min Verspätung" if delay and delay > 0 else "Pünktlich"
 
 

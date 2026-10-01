@@ -244,3 +244,13 @@ Manual:
 4. Proof PDF + calendar
 5. Filters
 6. Packaging + CI
+
+## 0.1.3 addendum: everything that lifts Zugbindung besides delay
+
+Verified on bahn.de (2026-10-01): Zugbindung is lifted by expected delay ≥ 20 min, Zugausfall, Haltausfall, a missed connection, and an early departure after a timetable change. A missed connection counts only if both trains are on the same ticket (separate tickets are separate contracts; U-Bahn/tram/bus/taxi never count). A refund needs an expected delay ≥ 60 min at the destination, also after a cancellation.
+
+- `delays.py` classifies cancellations from the whole run of the train (finished months): `zugausfall` (whole stretch), `teilausfall` (ended early / started late, with the station), `haltausfall` (train ran through). Raw data only knows the ticket's stations, so the wording stays per stop ("Ankunft in Bonn Hbf entfiel"). Real case: ICE 24 on 14.08.2026 ended in Frankfurt (Main) Hbf.
+- Card badge, evidence text, "Nachweis kopieren" and the proof PDF use these terms; never "Zug ausgefallen" for a Teilausfall.
+- After a cancellation or missed connection the refund answer carries a condition ("nur wenn ≥ 60 min später").
+- `reported` (new column, schema 2): the user's own statement. "Anschluss verpasst?" is offered only for tickets with a transfer and when the data shows none; "Zug fiel aus" when the train is missing from final data (state `missing`). Both are labelled "eigene Angabe" everywhere, including the proof PDF.
+- Early departure ≥ 1 min at the first origin lifts Zugbindung.

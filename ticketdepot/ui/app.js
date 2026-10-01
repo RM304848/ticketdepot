@@ -63,8 +63,8 @@ const fold = (s) => (s || "").toLowerCase().replace(/ß/g, "ss").replace(/[^0-9a
 const todayIso = () => new Date().toLocaleDateString("sv-SE");
 
 function delayText(v) {
-  if (v.cancelled) return "Ausfall";
-  if (v.missed_connection) return "Anschluss verpasst";
+  if (v.disruption) return v.disruption;
+  if (v.early_departure && (v.delay_min ?? 0) < 20) return "Abfahrt zu früh";
   if (v.delay_min == null) return null;
   return v.delay_min > 0 ? `+${v.delay_min} min` : "pünktlich";
 }
@@ -227,7 +227,7 @@ function renderChips(inTab) {
 function card(j) {
   const v = j.verdict;
   const delay = delayText(v);
-  const late = v.cancelled || v.missed_connection || (v.delay_min ?? 0) >= 20;
+  const late = Boolean(v.disruption) || v.early_departure || (v.delay_min ?? 0) >= 20;
   const open = state.open.has(j.id);
   const el = h("article", { class: `card state-${v.state}`, dataset: { id: j.id } },
     h("header", { class: "card-head" },
@@ -266,10 +266,24 @@ function body(j) {
           h("button", { type: "button", class: "link", onclick: () => toggleArrival(j.id) }, "Ankunft selbst eintragen")),
         state.arrivalOpen.has(j.id) ? arrivalForm(j) : null,
       ];
+    case "missing":
+      return [
+        h("p", { class: "headline" }, v.headline),
+        h("p", { class: "muted" }, v.detail),
+        h("div", { class: "row" },
+          h("button", { type: "button", class: "btn", onclick: () => report(j, "ausfall") }, "Zug fiel aus"),
+          h("button", { type: "button", class: "link", onclick: () => toggleArrival(j.id) }, "Ankunft selbst eintragen")),
+        state.arrivalOpen.has(j.id) ? arrivalForm(j) : null,
+      ];
     case "no_action":
-      return [h("p", { class: "muted" }, h("b", {}, v.headline), " · ", v.detail)];
+      return [h("p", { class: "muted" }, h("b", {}, v.headline), " · ", v.detail), missedLink(j)];
     case "ask":
-      return [h("p", { class: "question" }, "Bist du gefahren?"), h("div", { class: "answers" }, answer(j, "ja"), answer(j, "nein"))];
+      return [
+        h("p", { class: "question" }, "Bist du gefahren?"),
+        h("div", { class: "answers" }, answer(j, "ja"), answer(j, "nein")),
+        missedLink(j),
+        reportedNote(j),
+      ];
     case "needs_arrival":
       return [h("p", { class: "headline" }, v.headline), h("p", { class: "muted" }, v.detail), arrivalForm(j), changeAnswer(j)];
     case "choose":
@@ -298,6 +312,7 @@ function body(j) {
         h("p", { class: "headline" }, v.headline),
         h("p", { class: "muted" }, v.detail, " ", ruleLink(v.rule)),
         j.ridden === "ja" ? otherArrival(j) : null,
+        missedLink(j),
         changeAnswer(j),
       ];
     default:
@@ -312,6 +327,7 @@ function answer(j, key) {
     h("button", { type: "button", class: `answer-btn kind-${a.kind}`, onclick: () => save(j.id, { ridden: key }) },
       h("span", { class: "answer-key" }, `${arrow} →`), h("span", { class: "answer-value" }, a.label)),
     a.note ? h("p", { class: "note" }, a.note) : null,
+    a.condition ? h("p", { class: "condition" }, a.condition) : null,
     a.force_majeure ? forceMajeure() : null,
     a.force_majeure ? null : h("p", { class: "note" }, ruleLink(a.rule)),
   );
@@ -321,6 +337,7 @@ function option(j, o, title, action, choice) {
   return h("div", { class: "option" },
     h("p", { class: "option-title" }, title),
     h("p", { class: "note" }, o.note),
+    o.condition ? h("p", { class: "condition" }, o.condition) : null,
     h("button", { type: "button", class: "btn primary", onclick: () => save(j.id, { choice }) }, action),
     h("p", { class: "note" }, ruleLink(o.rule)),
   );
@@ -378,6 +395,29 @@ function arrivalForm(j) {
     h("label", {}, "Deine Ankunft am Ziel", input),
     h("button", { class: "btn small primary" }, "Speichern"),
     j.manual_arrival ? h("button", { type: "button", class: "link small", onclick: () => save(j.id, { manual_arrival: "" }) }, "Eigene Angabe löschen") : null);
+}
+
+function missedLink(j) {
+  if (!j.verdict.can_report_missed) return null;
+  return h("p", { class: "note" },
+    h("button", { type: "button", class: "link small", onclick: () => report(j, "anschluss") }, "Anschluss verpasst?"),
+    " Auch bei kleiner Verspätung hebt ein verpasster Anschluss auf diesem Ticket die Zugbindung auf. ",
+    ruleLink("anschluss"));
+}
+
+function reportedNote(j) {
+  if (!j.reported) return null;
+  const what = j.reported === "anschluss" ? "Anschluss verpasst" : "Zug fiel aus";
+  return h("p", { class: "note" }, `Deine Angabe: ${what}. `,
+    h("button", { type: "button", class: "link small", onclick: () => report(j, "") }, "zurücknehmen"));
+}
+
+async function report(j, what) {
+  try {
+    await afterUpdate(await call("report", j.id, what));
+  } catch (err) {
+    toast(err.message, true);
+  }
 }
 
 function changeAnswer(j) {

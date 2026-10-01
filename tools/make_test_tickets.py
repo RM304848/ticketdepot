@@ -64,7 +64,8 @@ TICKETS = [
       "dort „Ausgezahlt“ → erledigt."),
     T("05_ausfall", "900000000505", "Sparpreis", "29,99",
       [("Einfache Fahrt", [L("ICE 24", "Hanau Hbf", "14.08.2026 19:18", "Bonn Hbf", "14.08.2026 21:43")])],
-      "ICE 24 fiel in Bonn aus → Band „Ausfall“. „Nein“ → 29,99 € zurück oder später fahren. "
+      "ICE 24 endete vorzeitig in Frankfurt → „Teilausfall“. „Nein“ → später fahren, oder 29,99 € zurück, "
+      "wenn du dadurch ≥ 60 min später angekommen wärst. "
       "„Ja“ → „Wann bist du angekommen?“ (z. B. 23:10 → +87 min → 25 %)."),
     T("06_anschluss_verpasst", "900000000606", "Super Sparpreis", "27,99",
       [("Einfache Fahrt", [

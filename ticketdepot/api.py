@@ -102,7 +102,14 @@ class Api:
         return self.update(journey_id, {"vorrat_used_on": _now().date().isoformat()})
 
     def reset_answer(self, journey_id: int) -> dict:
-        return self.update(journey_id, {"ridden": "", "choice": "", "vorrat_used_on": None, "manual_arrival": None})
+        fields = {"ridden": "", "choice": "", "vorrat_used_on": None, "manual_arrival": None, "reported": ""}
+        return self.update(journey_id, fields)
+
+    def report(self, journey_id: int, what: str) -> dict:
+        """The user's own statement: "anschluss" (connection missed) or "ausfall" (train not in the data)."""
+        if what not in ("anschluss", "ausfall", ""):
+            raise ValueError(what)
+        return self.update(journey_id, {"reported": what})
 
     def delete_ticket(self, order_number: str) -> bool:
         with self._lock:
@@ -140,7 +147,7 @@ class Api:
             ("Geplante Ankunft", f"{arr:%d.%m.%Y %H:%M}"),
             ("Gebuchte Züge", trains),
         ]
-        reason = "Zugausfall" if v["cancelled"] else "Anschluss verpasst" if v["missed_connection"] else "Verspätung"
+        reason = v["disruption"] or "Verspätung"
         if v["claim_kind"] == "entschaedigung":
             actual = row["manual_arrival"] or (row["delays"][-1].arr_actual if row["delays"] else None)
             fields += [
@@ -218,6 +225,7 @@ class Api:
             claim_status=row["claim_status"],
             manual_arrival=manual,
             now=now,
+            reported=row["reported"],
         )
         view = {
             "id": row["id"],
@@ -241,7 +249,7 @@ class Api:
             "has_pdf": bool(row["pdf_path"]),
             "delays_checked": row["delays_checked"],
             "delays_final": _final(row),
-            **{k: row[k] for k in ("ridden", "choice", "vorrat_used_on", "controlled", "claim_status", "claim_date", "claim_amount", "manual_arrival", "notes")},
+            **{k: row[k] for k in ("ridden", "choice", "vorrat_used_on", "reported", "controlled", "claim_status", "claim_date", "claim_amount", "manual_arrival", "notes")},
             "verdict": verdict.to_dict(),
         }
         if verdict.state in ("claim", "reuse"):
@@ -254,7 +262,7 @@ class Api:
 
 def _final(row: dict) -> bool:
     delays = row["delays"]
-    if not delays or any(d.status != "ok" for d in delays):
+    if not delays or any(d.status == "pending" for d in delays):
         return False
     if all(d.source == "monthly" for d in delays):
         return True

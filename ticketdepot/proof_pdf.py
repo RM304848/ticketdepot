@@ -95,10 +95,10 @@ class _Page:
 
 
 def _delay(verdict: dict) -> str:
-    if verdict["cancelled"]:
-        return "Zug ausgefallen"
-    if verdict["missed_connection"]:
-        return "Anschluss verpasst"
+    if verdict["disruption"]:
+        return verdict["disruption"]
+    if verdict["early_departure"] and (verdict["delay_min"] or 0) < 20:
+        return "Abfahrt zu früh"
     return f"+{verdict['delay_min']} min"
 
 
@@ -106,8 +106,8 @@ def _actual(v: dict, last_leg: dict) -> str:
     if v.get("manual_arrival"):
         return f"{_dt(v['manual_arrival'])} (eigene Angabe)"
     d = last_leg.get("delay") or {}
-    if d.get("dep_cancelled") or d.get("arr_cancelled"):
-        return "Zug ausgefallen"
+    if d.get("arr_cancelled"):
+        return "entfallen (siehe unten)"
     if d.get("arr_actual"):
         return _dt(d["arr_actual"])
     return "keine Daten"

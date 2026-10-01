@@ -26,8 +26,11 @@ Beenden über **Beenden** oben rechts auf der Seite oder das Symbol in der Taskl
 | 20–59 min | Kein Anspruch | Später fahren (Zugbindung aufgehoben), bis 1 Jahr nach Reisedatum |
 | 60–119 min | 25 % Entschädigung | Geld zurück **oder** später fahren |
 | ≥ 120 min | 50 % Entschädigung | Geld zurück **oder** später fahren |
-| Ausfall / Anschluss verpasst | hängt von deiner Ankunft ab („Wann bist du angekommen?“) | Geld zurück **oder** später fahren |
+| Zugausfall, Teilausfall, Haltausfall, Anschluss verpasst | hängt von deiner Ankunft ab („Wann bist du angekommen?“) | später fahren; Geld zurück nur, wenn du dadurch ≥ 60 min später angekommen wärst |
+| Abfahrt zu früh (Fahrplanänderung) | nach Verspätung am Ziel | später fahren |
 
+- **Ausfälle** werden unterschieden: ganzer Abschnitt ausgefallen (Zugausfall), vorzeitig geendet oder später begonnen (Teilausfall), nur dein Halt entfiel (Haltausfall). So steht es auch im Nachweis-PDF.
+- **Anschluss verpasst** erkennt die App aus den Daten. Zeigen die Daten den Umstieg als geschafft, du hast ihn aber trotzdem verpasst: „Anschluss verpasst?“ auf der Karte (nur bei Umstieg auf demselben Ticket). Fehlt ein Zug ganz in den Daten (vorab gestrichen): „Zug fiel aus“.
 - Hin- und Rückfahrt zu einem Preis: Basis ist der halbe Preis. Entschädigungen unter 4 € zahlt die DB nicht aus.
 - Fristen zählen ab Reisedatum (Abfahrt). Die App setzt für Anträge **3 Monate** (bahn.de nennt 12 Monate); Vorrat-Tickets gelten 1 Jahr.
 - „Bald fällig“: Anträge 21 Tage vor der Frist, Vorrat-Tickets 30 Tage vor Ablauf. Am selben Tag liegt der Kalendereintrag.
