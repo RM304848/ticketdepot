@@ -58,11 +58,13 @@ class Api:
             tmp.unlink(missing_ok=True)
 
     def import_downloads(self) -> dict:
-        return self.import_folder(str(Path.home() / "Downloads"), "Ticket_*.pdf")
+        # bahn.de names its downloads "Ticket_<Auftrag>_<Datum>__<Name>.pdf" or "DB_Ticket_<Auftrag>.pdf"
+        return self.import_folder(str(Path.home() / "Downloads"), "Ticket_*.pdf", "DB_Ticket_*.pdf")
 
-    def import_folder(self, folder: str, pattern: str = "*.pdf") -> dict:
+    def import_folder(self, folder: str, *patterns: str) -> dict:
         path = Path(folder)
-        results = [self._import_file(p) for p in sorted(path.glob(pattern))]
+        files = sorted({p for pattern in patterns or ("*.pdf",) for p in path.glob(pattern)})
+        results = [self._import_file(p) for p in files]
         new = sum(1 for r in results if r.get("new"))
         errors = [r["message"] for r in results if not r["ok"]]
         return {

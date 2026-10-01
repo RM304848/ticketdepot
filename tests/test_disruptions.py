@@ -114,7 +114,7 @@ def test_refund_after_a_plain_delay_has_no_condition():
 
 
 def run_single(arr_delay, **kw):
-    return evaluate(SINGLE, 29.99, [ok(SINGLE.legs[0], arr_delay)], now=NOW, **kw)
+    return evaluate(SINGLE, 29.99, [ok(SINGLE.legs[0], arr_delay)], **{"now": NOW, **kw})
 
 
 def test_missed_connection_can_be_reported_only_with_a_transfer():
@@ -152,3 +152,35 @@ def test_early_departure_lifts_zugbindung():
     assert v.zugbindung_aufgehoben and v.state == "ask" and v.early_departure
     assert v.answers["nein"]["kind"] == "vorrat" and v.answers["ja"]["kind"] == "kein_anspruch"
     assert "4 min zu früh" in v.evidence
+
+
+def test_ask_card_shows_the_vorrat_behind_the_refund():
+    v = run_single(75)
+    assert v.question == "Bist du gefahren?" and v.answer_keys == {"ja": "Ja", "nein": "Nein"}
+    assert v.answers["nein"]["kind"] == "erstattung" and v.answers["nein"]["also"] == "oder später fahren bis 01.08.2027"
+    assert run_single(30).answers["nein"]["also"] == ""  # Vorrat only: nothing behind it
+
+
+def test_missed_connection_asks_whether_the_trip_was_abandoned():
+    v = evaluate(TWO, 29.99, [ok(TWO.legs[0], 15), ok(TWO.legs[1], 0)], now=NOW)
+    assert v.question == "Bist du trotzdem ans Ziel gefahren?"
+    assert v.answer_keys == {"ja": "Ja, später angekommen", "nein": "Nein, Reise abgebrochen"}
+
+
+def test_reported_missed_connection_keeps_the_delay_from_the_data():
+    # real case: ICE 2582 on 22.06.2026 was +88 at the destination anyway
+    late = evaluate(TWO, 14.99, [ok(TWO.legs[0], 6), ok(TWO.legs[1], 88)], reported="anschluss", now=NOW)
+    assert late.delay_min == 88 and late.answers["ja"]["kind"] == "ankunft"
+    assert late.answers["nein"]["condition"] == ""  # ≥ 60 min was to be expected in any case
+    on_time = evaluate(TWO, 14.99, [ok(TWO.legs[0], 6), ok(TWO.legs[1], 4)], reported="anschluss", now=NOW)
+    assert "60 min" in on_time.answers["nein"]["condition"]
+
+
+def test_past_the_apps_deadline_points_to_dbs_limit():
+    # travelled 01.08., the app's 3-month deadline is 01.11.2026, DB's limit 01.08.2027
+    before = run_single(75, now=datetime(2026, 10, 20, 12, 0))
+    assert (before.due, before.overdue, before.due_soon) == ("2026-11-01", False, True)
+    after = run_single(75, now=datetime(2026, 11, 5, 12, 0))
+    assert (after.due, after.overdue, after.due_soon, after.action_date) == ("2027-08-01", True, True, "2026-11-05")
+    vorrat = run_single(30, ridden="nein", now=datetime(2026, 11, 5, 12, 0))
+    assert (vorrat.due, vorrat.overdue) == ("2027-08-01", False)

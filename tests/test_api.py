@@ -149,6 +149,18 @@ def test_empty_state(tmp_path, monkeypatch):
     assert "bands" in data["config"] and data["config"]["version"]
 
 
+def test_import_downloads_finds_both_bahn_de_file_names(tmp_path, monkeypatch):
+    monkeypatch.setenv("TICKETDEPOT_DATA", str(tmp_path / "data"))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    (downloads / "Ticket_900000000808_14.08.2026__X.pdf").write_bytes(ICE_619.read_bytes())
+    (downloads / "DB_Ticket_900000000909.pdf").write_bytes(ICE_2466.read_bytes())
+    (downloads / "Rechnung.pdf").write_bytes(b"not a ticket")
+    res = api_module.Api().import_downloads()
+    assert res["ok"] and res["message"].startswith("2 Ticket-PDFs in Downloads gefunden, 2 neu importiert.")
+
+
 def test_migration_from_usage(tmp_path):
     db = tmp_path / "old.sqlite"
     con = sqlite3.connect(db)

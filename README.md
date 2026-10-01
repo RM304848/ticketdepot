@@ -33,7 +33,7 @@ Beenden über **Beenden** oben rechts auf der Seite oder das Symbol in der Taskl
 - **Anschluss verpasst** erkennt die App aus den Daten. Zeigen die Daten den Umstieg als geschafft, du hast ihn aber trotzdem verpasst: „Anschluss verpasst?“ auf der Karte (nur bei Umstieg auf demselben Ticket). Fehlt ein Zug ganz in den Daten (vorab gestrichen): „Zug fiel aus“.
 - Hin- und Rückfahrt zu einem Preis: Basis ist der halbe Preis. Entschädigungen unter 4 € zahlt die DB nicht aus.
 - Fristen zählen ab Reisedatum (Abfahrt). Die App setzt für Anträge **3 Monate** (bahn.de nennt 12 Monate); Vorrat-Tickets gelten 1 Jahr.
-- „Bald fällig“: Anträge 21 Tage vor der Frist, Vorrat-Tickets 30 Tage vor Ablauf. Am selben Tag liegt der Kalendereintrag.
+- „Bald fällig“: Anträge 21 Tage vor der Frist, Vorrat-Tickets 30 Tage vor Ablauf. Am selben Tag liegt der Kalendereintrag. Ist die eigene Frist verpasst, zeigt die App die Frist laut bahn.de.
 - Grundlage ist die *erwartete* Verspätung; die App sieht die *tatsächliche* als Näherung.
 - Alle Regeln, Schwellen, Texte und die offiziellen bahn.de-Seiten stehen in [`ticketdepot/rules.py`](ticketdepot/rules.py) (`LAST_VERIFIED`). `python tools/check_links.py` prüft die Links.
 
@@ -45,6 +45,7 @@ Aus dem öffentlichen Datensatz [piebro/deutsche-bahn-data](https://huggingface.
 
 - **Abgeschlossene Monate:** Monatsdatei, ca. 5–20 s pro Fahrt, endgültig.
 - **Laufender Monat:** rohe IRIS-Antworten des Reisetags, 30–60 s pro Fahrt, nach 2 Tagen endgültig.
+- Hat sich der Fahrplan nach der Buchung verschoben (bis 60 min), findet die App den Zug trotzdem; gemessen wird gegen die Zeiten auf dem Ticket.
 - Grenzen: nur Bahnhöfe in Deutschland; U-Bahn, Tram und Bus sind nicht erfasst.
 
 ## Entwickeln

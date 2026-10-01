@@ -24,10 +24,10 @@ def test_palette_is_shades_of_teal():
         assert f"{token}: {value};" in css
 
 
-def test_single_dark_theme_and_no_db_logo():
+def test_single_light_theme_and_no_db_logo():
     css = (UI / "style.css").read_text(encoding="utf-8")
     html = (UI / "index.html").read_text(encoding="utf-8")
-    assert "prefers-color-scheme" not in css
+    assert "prefers-color-scheme" not in css and "color-scheme: light;" in css
     assert ">DB<" not in html
 
 

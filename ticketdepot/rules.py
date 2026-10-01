@@ -210,6 +210,7 @@ class Answer:
     rule: str = ""  # key into RULES
     force_majeure: bool = False
     condition: str = ""  # shown with the answer when it only holds under a condition
+    also: str = ""  # the alternative behind the same answer: "oder später fahren bis …"
 
 
 @dataclass
@@ -233,6 +234,8 @@ class Verdict:
     claim_kind: str | None = None  # entschaedigung | erstattung
     pct: int | None = None
     amount_eur: float | None = None
+    question: str | None = None  # state "ask"
+    answer_keys: dict | None = None  # state "ask": {"ja": "Ja", "nein": "Nein"} or the missed-connection wording
     answers: dict | None = None  # state "ask": {"ja": Answer, "nein": Answer}
     options: list | None = None  # state "choose": [erstattung, vorrat]
     rule: str | None = None  # the rule behind the current recommendation
@@ -241,6 +244,7 @@ class Verdict:
     due_kind: str | None = None  # claim | vorrat
     action_date: str | None = None  # from here on the item is "Bald fällig"
     due_soon: bool = False
+    overdue: bool = False  # the app's own claim deadline passed; due is DB's limit now
     band: str | None = None
     outcomes: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
@@ -268,8 +272,10 @@ def journey_outcome(journey: Journey, delays: list[LegDelay] | None, reported: s
     early = delays[0].early_departure_min >= 1
     if reported == "anschluss" and not cancelled and missed_at is None:
         transfers = [leg.destination for leg in journey.legs[:-1]]
-        return Outcome(True, None, missed_connection=True, early_departure=early, label="Anschluss verpasst (eigene Angabe)",
-                       reported=reported, missed_at=transfers[0] if len(transfers) == 1 else None)  # fmt: skip
+        # the booked trains did run: their delay is what was to be expected had the connection held
+        return Outcome(True, delays[-1].arrival_delay_min, missed_connection=True, early_departure=early,
+                       label="Anschluss verpasst (eigene Angabe)", reported=reported,
+                       missed_at=transfers[0] if len(transfers) == 1 else None)  # fmt: skip
     if cancelled or missed_at:
         # the real arrival depends on the replacement train: unknown without the user's input
         label = _cancel_label(delays) if cancelled else "Anschluss verpasst"
@@ -392,8 +398,12 @@ def evaluate(
     elif ridden == "nein":
         _not_ridden(v, refund_possible, choice, refund, vorrat, vorrat_used_on, today)
     else:
-        nein = refund if refund_possible else vorrat
+        nein = Answer(**{**asdict(refund), "also": f"oder später fahren bis {_de(v.reuse_limit)}"}) if refund_possible else vorrat
         v.state, v.headline = "ask", "Bist du gefahren?"
+        v.question, v.answer_keys = "Bist du gefahren?", {"ja": "Ja", "nein": "Nein"}
+        if iris.missed_connection:
+            v.question = "Bist du trotzdem ans Ziel gefahren?"
+            v.answer_keys = {"ja": "Ja, später angekommen", "nein": "Nein, Reise abgebrochen"}
         v.detail = what
         v.answers = {"ja": asdict(ja), "nein": asdict(nein)}
         v.outcomes = [o for o in (
@@ -406,9 +416,11 @@ def evaluate(
 
     v = _apply_claim_status(v, claim_status)
     _expire(v, today)
+    if v.due_kind == "claim" and v.due == v.claim_deadline and v.claim_deadline < today.isoformat():
+        v.overdue, v.due = True, v.claim_limit  # past the app's deadline, DB still accepts it: act now
     if v.due:
         lead = CLAIM_LEAD_DAYS if v.due_kind == "claim" else VORRAT_LEAD_DAYS
-        action = date.fromisoformat(v.due) - timedelta(days=lead)
+        action = today if v.overdue else date.fromisoformat(v.due) - timedelta(days=lead)
         v.action_date = action.isoformat()
         v.due_soon = action <= today
     return v

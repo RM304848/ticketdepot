@@ -53,8 +53,9 @@ Migration of existing `usage` values: `gefahren` → `ridden=ja`; `anderer_zug` 
 - One question as two large buttons, each with the result of that answer:
   `Bist du gefahren?` → `[ Ja → 7,50 € ]` `[ Nein → 29,99 € zurück ]`
   - Ja side: compensation amount; `Kein Anspruch` if < 60 min or < 4 €; `Ankunft eintragen` if cancelled/missed.
-  - Nein side: `X € zurück` if ≥ 60 min or cancelled/missed; `später fahren bis 14.08.2027` if 20–59 min.
-- Deadline line: `Frist: 14.11.2026` + `Details ›`.
+  - Nein side: `X € zurück` if ≥ 60 min or cancelled/missed, with a second line `oder später fahren bis 14.08.2027` (the choice follows after answering); `später fahren bis 14.08.2027` if 20–59 min.
+  - Missed connection (detected or reported): `Bist du trotzdem ans Ziel gefahren?` → `[ Ja, später angekommen → … ]` `[ Nein, Reise abgebrochen → … ]`. A reported missed connection keeps the delay of the booked trains from the data: if that was ≥ 60 min, the refund has no condition.
+- Deadline line: `Frist: 14.11.2026` + `Details ›`; past the app's own deadline: `Eigene Frist 14.11.2026 verpasst · laut bahn.de noch bis 14.08.2027`.
 
 ### 2.2 States after answering
 
@@ -104,7 +105,7 @@ All thresholds, percentages, texts and source URLs live here with `LAST_VERIFIED
 4. **Refund (not ridden):** expected delay ≥ 60 min (or cancelled/missed) → refund of the unused journey's basis.
 5. **Reuse / Vorrat:** expected delay ≥ 20 min (or cancelled/missed) lifts train binding; usable for a later connection up to **one year after the travel date** (last valid day = travel date + 1 year). Not for heavily discounted tickets (Deutschland-Ticket, Länder-Tickets). Source verified: https://www.bahn.de/faq/zugbindung-aufgehoben-bedeutung ("bis zu einem Jahr nach ursprünglichem Reisedatum"). Update the stale comment and README that say bahn.de names no limit.
 6. **Refund and reuse are mutually exclusive** → choice in 2.2.
-7. **Claim deadline:** the app shows 3 months after the travel date (`CLAIM_DEADLINE_MONTHS`), for both compensation and refund, as an early reminder. bahn.de states 12 months (`DB_CLAIM_LIMIT_MONTHS`, shown in Details and in the calendar description).
+7. **Claim deadline:** the app shows 3 months after the travel date (`CLAIM_DEADLINE_MONTHS`), for both compensation and refund, as an early reminder. bahn.de states 12 months (`DB_CLAIM_LIMIT_MONTHS`, shown in Details and in the calendar description). Once the app's deadline has passed, the item's deadline becomes DB's limit and it is "Bald fällig" from today on.
 8. **Lead times** (constants): `CLAIM_LEAD_DAYS = 21`, `VORRAT_LEAD_DAYS = 30`. An item is "Bald fällig" from `deadline − lead` on; calendar events use the same date (section 6).
 9. **Delay bands** (for filters), lower bound inclusive, upper exclusive: `20–59`, `60–119`, `≥ 120`. Each band carries a short explanation for both answers, e.g. `60–119 min`: `Gefahren → 25 % · Nicht gefahren → Geld zurück oder später fahren`.
 10. Every rule has `source_url` (section 7).
@@ -163,37 +164,39 @@ For every Vorrat ticket and every open claim: `In Kalender` → `.ics` download 
 - All verified on 2026-09-30 (see `RULES` in `rules.py`): Zugbindung/one year, compensation 25/50 % and 4 € minimum (same FAQ page), refund when not travelling (`/service/informationen-buchung/fahrgastrechte/rechtliche-regelungen`), claim deadline (FAQ: 12 months), force majeure (FAQ, Art. 19 Abs. 10), PDF on mobile device.
 - `tools/check_links.py`: requests every `source_url` with a browser User-Agent (`HEAD`, fall back to `GET`); reports OK / broken (404, 410, DNS) / `manuell prüfen` (403, 429, timeouts). Manual run only.
 
-## 8. Visual design: "Shades of Teal", one dark theme
+## 8. Visual design: light Health OS neutrals, "Shades of Teal" for interaction
 
-Single dark theme; ignore `prefers-color-scheme`; remove the light variables. Remove the red "DB" logo box; use a neutral icon (e.g. a simple ticket glyph) and the name "Ticketdepot".
+Single light theme; ignore `prefers-color-scheme`. The page uses the neutrals of Health OS (bright mode); the teal shades are reserved for interaction and accents. No red "DB" logo box; a neutral ticket glyph and the name "Ticketdepot".
 
 All colors are CSS custom properties in **one `:root` block** in `style.css`; no hex anywhere else (including JS and `#fff` in toasts).
 
-Palette (https://www.color-hex.com/color-palette/4666):
+Teal palette (https://www.color-hex.com/color-palette/4666):
 
 | Token | Hex | Use |
 |---|---|---|
-| `--teal-100` | `#b2d8d8` | Large numbers on tiles, emphasis text |
-| `--teal-300` | `#66b2b2` | Links, active tab underline, focus rings, small accent text |
-| `--teal-500` | `#008080` | Primary button fill, white text |
-| `--teal-700` | `#006666` | Primary hover/pressed, selected chips, white text |
-| `--teal-900` | `#004c4c` | Selected card tint, active filter bar background |
+| `--teal-100` | `#b2d8d8` | Tints (mixed with the surface): filter bar, badges, claim/Vorrat cards |
+| `--teal-300` | `#66b2b2` | Hover borders |
+| `--teal-500` | `#008080` | Primary button fill (white text), links, active tab, focus rings, logo |
+| `--teal-700` | `#006666` | Primary hover, selected chips, amounts and emphasis text |
+| `--teal-900` | `#004c4c` | Text on teal tints, toasts |
 
-Neutrals and semantic colors (same `:root` block):
+Neutrals and semantic colors (Health OS bright mode, same `:root` block):
 
 | Token | Hex | Use |
 |---|---|---|
-| `--bg` | `#0e1717` | Page background |
-| `--surface` | `#142121` | Cards, tiles |
-| `--surface-2` | `#1b2b2b` | Inputs, hover |
-| `--line` | `#294040` | Borders |
-| `--text` | `#e6f0f0` | Body text |
-| `--muted` | `#9bb3b3` | Secondary text |
+| `--bg` | `#fffcf5` | Page background |
+| `--surface` | `#ffffff` | Cards, tiles, buttons, inputs |
+| `--surface-2` | `#faf6ee` | Answer buttons, options, chips |
+| `--line` | `#e8e1d3` | Borders |
+| `--field` | `#8a8072` | Input borders |
+| `--text` | `#201c17` | Body text |
+| `--muted` | `#5f6670` | Secondary text |
 | `--white` | `#ffffff` | Text on teal fills |
-| `--amber` | `#f2b554` | Needs input, deadlines |
-| `--red` | `#ff8a80` | Delay badge, `Löschen` |
+| `--amber` | `#8a5a00` | Needs input, deadlines (text) |
+| `--amber-line` | `#e0a43a` | The same as a bar |
+| `--red` | `#b3334f` | Delay badge, `Löschen` |
 
-Teal = action / money available. Teal-500 and darker only as fills with white text, never as text on the dark background. The proof PDF keeps black on white.
+Teal = action / money available. Light teals only as tints or decorative borders, never as text on the light background. The proof PDF keeps black on white.
 
 ## 9. Packaging and release
 

@@ -36,6 +36,10 @@ from .stations import evas_for, fold
 HF = "https://huggingface.co/datasets/piebro/deutsche-bahn-data/resolve/main/"
 HF_TREE = "https://huggingface.co/api/datasets/piebro/deutsche-bahn-data/tree/main/"
 BERLIN = ZoneInfo("Europe/Berlin")
+# The timetable can change after booking (real example: ICE 799 on 03.09.2026, ticket 14:10 → 17:16,
+# data 14:13 → 17:05). A stop of the same train at the same station counts if its planned time is
+# this close to the ticket's; the closest one wins. The ticket's times stay the planned times.
+TIMETABLE_SHIFT = timedelta(minutes=60)
 
 
 @dataclass
@@ -150,12 +154,13 @@ def _leg_from_stops(leg: Leg, stops: list[dict]) -> LegDelay:
 
     def find(station: str, key: str, planned: datetime) -> dict | None:
         evas = set(evas_for(station))
+        candidates = []
         for s in stops:
             same_train = s["number"] == number or (s["line"] or "").upper() in (number, kind + number)
             same_station = s["eva"] in evas or fold(station) in (fold(s["station"] or ""), fold(s["xml_station"] or ""))
-            if same_train and same_station and s[key] == planned:
-                return s
-        return None
+            if same_train and same_station and s[key] and abs(s[key] - planned) <= TIMETABLE_SHIFT:
+                candidates.append(s)
+        return min(candidates, key=lambda s: abs(s[key] - planned), default=None)
 
     dep = find(leg.origin, "dep_pt", leg.departure)
     arr = find(leg.destination, "arr_pt", leg.arrival)
@@ -284,25 +289,28 @@ def _from_raw(legs: list[Leg], now: datetime) -> list[LegDelay]:
 def _raw_stop(leg, station, tag, planned, plans, fchg, last_fchg):
     """(actual time, cancelled) for one stop, "pending" if not reported yet, None if unknown."""
     kind, number = split_train(leg.train)
-    pt = planned.strftime("%y%m%d%H%M")
+    candidates = []  # (eva, stop, planned time in the data)
     for eva in evas_for(station)[:3]:
         for s in plans.get(eva, []):
             tl, ev = s.find("tl"), s.find(tag)
-            if tl is None or ev is None or ev.get("pt") != pt:
+            pt = _iris_time(ev.get("pt")) if ev is not None else None
+            if tl is None or pt is None or abs(pt - planned) > TIMETABLE_SHIFT:
                 continue
             line = (ev.get("l") or "").upper()
-            if tl.get("n") != number and line not in (number, kind + number):
-                continue
-            changes = [(t, c) for t, c in fchg.get(eva, []) if c.get("id") == s.get("id")]
-            if changes:
-                change = max(changes, key=lambda tc: tc[0])[1].find(tag)
-                if change is not None:
-                    actual = _iris_time(change.get("ct")) or planned
-                    return actual, change.get("clt") is not None or change.get("cs") == "c"
-            if last_fchg.get(eva, datetime.min) > planned + timedelta(minutes=15):
-                return planned, False  # reported after the stop and never changed: on time
-            return "pending"
-    return None
+            if tl.get("n") == number or line in (number, kind + number):
+                candidates.append((eva, s, pt))
+    if not candidates:
+        return None
+    eva, s, pt = min(candidates, key=lambda c: abs(c[2] - planned))
+    changes = [(t, c) for t, c in fchg.get(eva, []) if c.get("id") == s.get("id")]
+    if changes:
+        change = max(changes, key=lambda tc: tc[0])[1].find(tag)
+        if change is not None:
+            actual = _iris_time(change.get("ct")) or pt
+            return actual, change.get("clt") is not None or change.get("cs") == "c"
+    if last_fchg.get(eva, datetime.min) > pt + timedelta(minutes=15):
+        return pt, False  # reported after the stop and never changed: as in the timetable
+    return "pending"
 
 
 def _raw_files_for(leg: Leg) -> list[str]:

@@ -248,6 +248,7 @@ function card(j) {
 
 function dueLine(v) {
   if (!v.due) return h("span", { class: "due" });
+  if (v.overdue) return h("span", { class: "due soon" }, `Eigene Frist ${de(v.claim_deadline)} verpasst · laut bahn.de noch bis ${de(v.due)}`);
   const text = v.due_kind === "vorrat" ? `Gültig bis ${de(v.due)}` : `Frist: ${de(v.due)}`;
   return h("span", { class: `due ${v.due_soon ? "soon" : ""}` }, text, v.due_soon ? " · bald fällig" : "");
 }
@@ -279,7 +280,7 @@ function body(j) {
       return [h("p", { class: "muted" }, h("b", {}, v.headline), " · ", v.detail), missedLink(j)];
     case "ask":
       return [
-        h("p", { class: "question" }, "Bist du gefahren?"),
+        h("p", { class: "question" }, v.question),
         h("div", { class: "answers" }, answer(j, "ja"), answer(j, "nein")),
         missedLink(j),
         reportedNote(j),
@@ -322,10 +323,10 @@ function body(j) {
 
 function answer(j, key) {
   const a = j.verdict.answers[key];
-  const arrow = key === "ja" ? "Ja" : "Nein";
   return h("div", { class: "answer" },
     h("button", { type: "button", class: `answer-btn kind-${a.kind}`, onclick: () => save(j.id, { ridden: key }) },
-      h("span", { class: "answer-key" }, `${arrow} →`), h("span", { class: "answer-value" }, a.label)),
+      h("span", { class: "answer-key" }, `${j.verdict.answer_keys[key]} →`), h("span", { class: "answer-value" }, a.label),
+      a.also ? h("span", { class: "answer-also" }, a.also) : null),
     a.note ? h("p", { class: "note" }, a.note) : null,
     a.condition ? h("p", { class: "condition" }, a.condition) : null,
     a.force_majeure ? forceMajeure() : null,
