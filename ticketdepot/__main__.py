@@ -73,6 +73,12 @@ def main() -> None:
 
 
 def _run_with_tray(server) -> None:
+    from . import menubar
+
+    if menubar.available():  # macOS: a template symbol that follows light/dark
+        menubar.run(server)
+        return
+
     import pystray
 
     threading.Thread(target=server.serve_forever, daemon=True).start()
