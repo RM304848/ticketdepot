@@ -102,5 +102,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#v}"
-          sed "s/VERSION/$version/g" packaging/RELEASE_NOTES.md > notes.md
+          python3 packaging/release_notes.py "$version" > notes.md  # fails without a CHANGELOG.md section
           gh release create "$GITHUB_REF_NAME" artifacts/* --title "Ticketdepot $version" --notes-file notes.md
